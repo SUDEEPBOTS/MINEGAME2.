@@ -47,7 +47,7 @@ async def ensure_registered(update, context):
         return False
     return True
 
-# --- 🔥 NEW: GROUP ADD REWARD LOGIC ---
+# --- GROUP REWARD LOGIC ---
 async def group_join_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Jab Bot ko Group me add kiya jaye tab Reward dega"""
     if not update.message.new_chat_members: return
@@ -77,21 +77,28 @@ async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await ensure_registered(update, context): return
     user = update.effective_user
-    try: code_name = context.args[0]
-    except: 
+    
+    # Check args
+    if not context.args: 
         msg = await update.message.reply_text("⚠️ Usage: `/redeem <code>`", quote=True)
         context.job_queue.run_once(delete_job, 5, chat_id=msg.chat_id, data=msg.message_id)
         return
 
+    # 🔥 FIX: .strip() lagaya taaki spaces hat jayein
+    code_name = context.args[0].strip()
+
     code_data = codes_col.find_one({"code": code_name})
-    if not code_data: return await update.message.reply_text("❌ Invalid Code!", quote=True)
-    if user.id in code_data.get("redeemed_by", []): return await update.message.reply_text("⚠️ Already redeemed!", quote=True)
-    if len(code_data.get("redeemed_by", [])) >= code_data.get("limit", 0): return await update.message.reply_text("❌ Code Expired!", quote=True)
+    if not code_data: return await update.message.reply_text("❌ Invalid Code! (Spelling Check Karo)", quote=True)
+    
+    if user.id in code_data.get("redeemed_by", []): return await update.message.reply_text("⚠️ You already redeemed this code!", quote=True)
+    
+    if len(code_data.get("redeemed_by", [])) >= code_data.get("limit", 0): return await update.message.reply_text("❌ Code Limit Reached (Expired)!", quote=True)
     
     amount = code_data["amount"]
     update_balance(user.id, amount)
     codes_col.update_one({"code": code_name}, {"$push": {"redeemed_by": user.id}})
-    await update.message.reply_text(f"🎉 **Added ₹{amount}**\nNew Balance: ₹{get_balance(user.id)}", parse_mode=ParseMode.MARKDOWN, quote=True)
+    
+    await update.message.reply_text(f"🎉 **Success!**\nAdded: ₹{amount}\nNew Balance: ₹{get_balance(user.id)}", parse_mode=ParseMode.MARKDOWN, quote=True)
 
 async def bet_menu(update, context):
     if not await ensure_registered(update, context): return
@@ -337,4 +344,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
+    
