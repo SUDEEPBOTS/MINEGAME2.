@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from config import TELEGRAM_TOKEN, GRID_SIZE, DELETE_TIMER
 from database import users_col, codes_col, get_user, update_balance, get_balance, check_registered, register_user, update_group_activity
 from ai_chat import get_yuki_response
-import admin, start, help, group, leaderboard, pay # <-- PAY ADDED
+import admin, start, help, group, leaderboard, pay
 
 # --- FLASK SERVER (FOR UPTIME) ---
 app = Flask('')
@@ -46,6 +46,26 @@ async def ensure_registered(update, context):
         await update.message.reply_text(f"🛑 **{user.first_name}, Register First!**\nGet ₹500 Bonus.", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
         return False
     return True
+
+# --- 🔥 NEW: GROUP ADD REWARD LOGIC ---
+async def group_join_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Jab Bot ko Group me add kiya jaye tab Reward dega"""
+    if not update.message.new_chat_members: return
+
+    for member in update.message.new_chat_members:
+        # Check agar new member khud Bot hai
+        if member.id == context.bot.id:
+            adder = update.message.from_user
+            
+            # Reward: ₹1000
+            update_balance(adder.id, 1000)
+            
+            await update.message.reply_text(
+                f"🎉 **Thanks {adder.first_name}!**\n"
+                f"Mujhe apne Group me add karne ke liye.\n"
+                f"💸 **Reward:** ₹1000 added to your wallet!",
+                parse_mode=ParseMode.MARKDOWN
+            )
 
 # --- COMMANDS ---
 
@@ -282,14 +302,14 @@ def main():
     app.add_handler(CommandHandler("sell", group.sell_shares))
     app.add_handler(CommandHandler("top", leaderboard.user_leaderboard))
     
-    # 🔥 PAY & CRIME (From pay.py)
+    # Pay & Crime
     app.add_handler(CommandHandler("pay", pay.pay_user))
     app.add_handler(CommandHandler("rob", pay.rob_user))
     app.add_handler(CommandHandler("kill", pay.kill_user))
     app.add_handler(CommandHandler("protect", pay.protect_user))
     app.add_handler(CommandHandler("alive", pay.check_status))
     
-    # 🔥 RESET & ADMIN (From admin.py)
+    # Reset & Admin
     app.add_handler(CommandHandler("eco", admin.economy_toggle))
     app.add_handler(CommandHandler("reset", admin.reset_menu))
     
@@ -302,9 +322,12 @@ def main():
     app.add_handler(CommandHandler("delkey", admin.remove_key_cmd))
     app.add_handler(CommandHandler("keys", admin.list_keys_cmd))
     
-    # Callbacks (Must be before MessageHandler)
+    # Callbacks
     app.add_handler(CallbackQueryHandler(admin.reset_callback, pattern="^confirm_wipe$|^cancel_wipe$"))
     app.add_handler(CallbackQueryHandler(callback_handler))
+    
+    # 🔥 GROUP ADD HANDLER (Paisa milega)
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, group_join_reward))
     
     # Messages
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
@@ -314,4 +337,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
+
