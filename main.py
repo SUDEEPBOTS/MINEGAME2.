@@ -8,7 +8,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 # IMPORTS
 from config import TELEGRAM_TOKEN, GRID_SIZE, DELETE_TIMER
 from database import users_col, codes_col, get_user, update_balance, get_balance, check_registered, register_user, update_group_activity
-from ai_chat import get_yuki_response  # <-- IMPORT AI CHAT
+from ai_chat import get_yuki_response
 import admin, start, help, group, leaderboard
 
 # --- FLASK SERVER (FOR UPTIME) ---
@@ -30,7 +30,7 @@ active_games = {}
 SHOP_ITEMS = {
     "vip":   {"name": "👑 VIP", "price": 10000},
     "god":   {"name": "⚡ God", "price": 50000},
-    "rich":  {"name": "🎖️ shadow", "price": 10000000}
+    "rich":  {"name": "💸 Rich", "price": 100000}
 }
 BOMB_CONFIG = {
     1:  [1.01, 1.08, 1.15, 1.25, 1.40, 1.55, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0], 
@@ -53,6 +53,42 @@ async def ensure_registered(update, context):
     return True
 
 # --- HANDLERS ---
+
+# 🔥 FIXED: REDEEM FUNCTION ADDED HERE
+async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await ensure_registered(update, context): return
+    
+    user = update.effective_user
+    try: code_name = context.args[0]
+    except: 
+        msg = await update.message.reply_text("⚠️ Usage: `/redeem <code>`")
+        context.job_queue.run_once(delete_job, 5, chat_id=msg.chat_id, data=msg.message_id)
+        return
+
+    # Check Code in DB
+    code_data = codes_col.find_one({"code": code_name})
+    
+    # Validations
+    if not code_data:
+        await update.message.reply_text("❌ Invalid Code!")
+        return
+        
+    if user.id in code_data.get("redeemed_by", []):
+        await update.message.reply_text("⚠️ You already redeemed this code!")
+        return
+        
+    if len(code_data.get("redeemed_by", [])) >= code_data.get("limit", 0):
+        await update.message.reply_text("❌ Code Limit Reached (Expired)!")
+        return
+    
+    # Success Transaction
+    amount = code_data["amount"]
+    update_balance(user.id, amount)
+    codes_col.update_one({"code": code_name}, {"$push": {"redeemed_by": user.id}})
+    
+    await update.message.reply_text(f"🎉 **Success!**\nAdded: ₹{amount}\nNew Balance: ₹{get_balance(user.id)}", parse_mode=ParseMode.MARKDOWN)
+
+
 async def bet_menu(update, context):
     if not await ensure_registered(update, context): return
     try: await update.message.delete()
@@ -172,6 +208,9 @@ async def callback_handler(update, context):
 async def handle_message(update, context):
     user = update.effective_user
     chat = update.effective_chat
+    
+    if not update.message or not update.message.text: return
+    
     text = update.message.text
     
     # 1. GROUP ACTIVITY TRACKING
@@ -206,7 +245,7 @@ def main():
     app.add_handler(CommandHandler("help", help.help_command))
     app.add_handler(CommandHandler("bet", bet_menu))
     app.add_handler(CommandHandler("shop", shop_menu))
-    app.add_handler(CommandHandler("redeem", redeem_code))
+    app.add_handler(CommandHandler("redeem", redeem_code)) # ✅ Error Fixed (Function Defined above)
     
     # Group & Market
     app.add_handler(CommandHandler("ranking", group.ranking))
@@ -220,7 +259,7 @@ def main():
     app.add_handler(CommandHandler("code", admin.create_code))
     app.add_handler(CommandHandler("add", admin.add_money))
     
-    # 🔥 NEW API KEY COMMANDS
+    # API KEY COMMANDS
     app.add_handler(CommandHandler("addkey", admin.add_key_cmd))
     app.add_handler(CommandHandler("delkey", admin.remove_key_cmd))
     app.add_handler(CommandHandler("keys", admin.list_keys_cmd))
@@ -235,4 +274,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
+        
