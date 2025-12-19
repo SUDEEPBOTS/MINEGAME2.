@@ -25,9 +25,9 @@ async def bet_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🛑 **Register First!**", reply_markup=InlineKeyboardMarkup(kb), quote=True)
         return
 
-    # ⚠️ FIX: Message Delete hata diya taaki Quote reply kaam kare
-    # try: await update.message.delete()
-    # except: pass 
+    # 🔥 FIX: Group me crash nahi hoga ab
+    try: await update.message.delete()
+    except: pass 
     
     # 2. Argument Check
     try: bet_amount = int(context.args[0])
@@ -51,7 +51,7 @@ async def bet_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❌ Cancel", callback_data=f"close_{user.id}")]
     ]
     
-    # Quote=True ab 100% kaam karega kyunki message delete nahi hua
+    # Quote=True taaki user ko tag kare
     await update.message.reply_text(
         f"🎮 **Game Setup ({user.first_name})**\n"
         f"💰 Bet Amount: ₹{bet_amount}\n"
@@ -181,4 +181,4 @@ async def bet_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.message.delete()
         
     if act == "noop": await q.answer("Ye khul chuka hai!", show_alert=False)
-                    
+        
