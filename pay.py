@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 from database import (
     update_balance, get_balance, get_user, 
     set_protection, is_protected, get_economy_status, 
-    update_kill_count, set_dead, is_dead # <-- New Functions Imported
+    update_kill_count, set_dead, is_dead
 )
 
 # --- ECONOMY CONFIGS ---
@@ -38,6 +38,15 @@ async def pay_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_balance(receiver.id, amount)
     
     await update.message.reply_text(f"💸 **Transfer Successful!**\n👤 {sender.first_name} sent ₹{amount} to {receiver.first_name}.")
+    
+    # Notify Receiver in DM
+    try:
+        await context.bot.send_message(
+            chat_id=receiver.id, 
+            text=f"🏧 **RECEIVED MONEY!**\n\n👤 {sender.first_name} ne tumhe ₹{amount} bheje hain.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except: pass
 
 # --- 2. PROTECT (Shield) ---
 async def protect_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -86,7 +95,19 @@ async def rob_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         loot = int(victim_bal * random.uniform(0.1, 0.4)) 
         update_balance(victim.id, -loot)
         update_balance(thief.id, loot)
+        
+        # Group Message
         await update.message.reply_text(f"🔫 **ROBBERY SUCCESS!**\nTune {victim.first_name} ke ₹{loot} uda liye! 🏃‍♂️💨")
+        
+        # 🔥 DM ALERT TO VICTIM
+        try:
+            await context.bot.send_message(
+                chat_id=victim.id,
+                text=f"⚠️ **ALERT: ROBBERY!**\n\n🕵️‍♂️ **{thief.first_name}** ne tumhe loot liya!\n📉 Amount Stolen: ₹{loot}\n💡 Tip: Use /bank to save money.",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except: pass
+
     else:
         # Fail & Penalty
         update_balance(thief.id, -ROB_FAIL_PENALTY)
@@ -131,6 +152,7 @@ async def kill_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Medical Button Logic
     kb = [[InlineKeyboardButton(f"🏥 Medical Revive (₹{HOSPITAL_FEE})", callback_data=f"revive_{victim.id}")]]
     
+    # Group Message
     await update.message.reply_text(
         f"💀 **MURDER!**\n"
         f"🔪 **Killer:** {killer.first_name}\n"
@@ -140,6 +162,15 @@ async def kill_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Game khelne ke liye niche button daba kar revive ho jao.",
         reply_markup=InlineKeyboardMarkup(kb)
     )
+
+    # 🔥 DM ALERT TO VICTIM
+    try:
+        await context.bot.send_message(
+            chat_id=victim.id,
+            text=f"☠️ **YOU ARE KILLED!**\n\n🔪 **{killer.first_name}** murdered you.\n📉 You lost: ₹{loss}\n\n🏥 **Revive:** Group me 'Medical Revive' button dabao wapis zinda hone ke liye.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except: pass
 
 # --- 5. REVIVE HANDLER (Button Click) ---
 async def revive_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
