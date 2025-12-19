@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from config import TELEGRAM_TOKEN, GRID_SIZE, DELETE_TIMER
 from database import users_col, codes_col, get_user, update_balance, get_balance, check_registered, register_user, update_group_activity
 from ai_chat import get_yuki_response
-# 👇 BANK IMPORT KIYA HAI
+# ALL MODULES IMPORTED
 import admin, start, help, group, leaderboard, pay, bank 
 
 # --- FLASK SERVER (FOR UPTIME) ---
@@ -44,7 +44,7 @@ async def ensure_registered(update, context):
     user = update.effective_user
     if not check_registered(user.id):
         kb = [[InlineKeyboardButton("📝 Register", callback_data=f"reg_start_{user.id}")]]
-        # Group me reply karke batayega
+        # Quote=True taaki group me pata chale kiske liye msg hai
         await update.message.reply_text(f"🛑 **{user.first_name}, Register First!**\nGet ₹500 Bonus.", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN, quote=True)
         return False
     return True
@@ -74,21 +74,18 @@ async def group_join_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     bal = get_balance(user.id)
-    # Quote=True se group me pata chalega kiska balance hai
     await update.message.reply_text(f"💳 **{user.first_name}'s Balance:** ₹{bal}", parse_mode=ParseMode.MARKDOWN, quote=True)
 
 async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await ensure_registered(update, context): return
     user = update.effective_user
     
-    # Check args
     if not context.args: 
         msg = await update.message.reply_text("⚠️ Usage: `/redeem <code>`", quote=True)
         context.job_queue.run_once(delete_job, 5, chat_id=msg.chat_id, data=msg.message_id)
         return
 
-    # Strip spaces
-    code_name = context.args[0].strip()
+    code_name = context.args[0].strip() # Spaces fix
 
     code_data = codes_col.find_one({"code": code_name})
     if not code_data: return await update.message.reply_text("❌ Invalid Code! (Spelling Check Karo)", quote=True)
@@ -106,14 +103,13 @@ async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def bet_menu(update, context):
     if not await ensure_registered(update, context): return
     
-    # Group Friendly Delete Logic
+    # Try delete (Groups me aksar fail hota hai isliye pass)
     try: await update.message.delete()
     except: pass 
     
     try: bet = int(context.args[0])
     except: 
-        # Error msg group me quote karke bhejo
-        msg = await update.message.reply_text("⚠️ **Invalid Format!**\nUse: `/bet 100`", parse_mode=ParseMode.MARKDOWN, quote=True)
+        msg = await update.message.reply_text("⚠️ **Format:** `/bet 100`", parse_mode=ParseMode.MARKDOWN, quote=True)
         context.job_queue.run_once(delete_job, 5, chat_id=msg.chat_id, data=msg.message_id)
         return
         
@@ -128,8 +124,7 @@ async def bet_menu(update, context):
         [InlineKeyboardButton("🔴 5 Bombs", callback_data=f"set_5_{bet}_{uid}"), InlineKeyboardButton("💀 10 Bombs", callback_data=f"set_10_{bet}_{uid}")],
         [InlineKeyboardButton("❌ Cancel", callback_data=f"close_{uid}")]
     ]
-    
-    # 🔥 FIX: quote=True lagaya hai taaki group me tag ho jaye
+    # Quote=True se group me reply sahi jayega
     await update.message.reply_text(f"🎮 **Game Setup ({update.effective_user.first_name})**\nBet: ₹{bet}\nSelect Difficulty 👇", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN, quote=True)
 
 async def shop_menu(update, context):
@@ -147,6 +142,11 @@ async def callback_handler(update, context):
     data = q.data
     uid = q.from_user.id
     
+    # 🔥 MEDICAL REVIVE (Important Added Here)
+    if data.startswith("revive_"):
+        await pay.revive_callback(update, context)
+        return
+
     # REGISTER BUTTON
     if data.startswith("reg_start_"):
         target_id = int(data.split("_")[2])
@@ -317,7 +317,7 @@ def main():
     app.add_handler(CommandHandler("shop", shop_menu))
     app.add_handler(CommandHandler("redeem", redeem_code))
     
-    # 🔥 BANK (New Commands)
+    # BANK
     app.add_handler(CommandHandler("bank", bank.bank_info))
     app.add_handler(CommandHandler("deposit", bank.deposit))
     app.add_handler(CommandHandler("withdraw", bank.withdraw))
