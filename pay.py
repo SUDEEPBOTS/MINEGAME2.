@@ -25,8 +25,11 @@ async def pay_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("⚠️ Reply karke likho: `/pay 100`")
     
     receiver = update.message.reply_to_message.from_user
+    
+    # 🔥 FIX: Bot ko paisa na bheje
+    if receiver.is_bot: return await update.message.reply_text("❌ Bot ko paisa nahi bhej sakte!")
+    
     if sender.id == receiver.id: return await update.message.reply_text("❌ Khud ko nahi bhej sakte!")
-    if receiver.is_bot: return await update.message.reply_text("❌ Bot ko paisa doge?")
 
     try: amount = int(context.args[0])
     except: return await update.message.reply_text("⚠️ Usage: `/pay 100`")
@@ -77,100 +80,100 @@ async def rob_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("⚠️ Kisko lootna hai? Reply command on message.")
     
     victim = update.message.reply_to_message.from_user
-    if thief.id == victim.id: return
     
-    if is_dead(victim.id): return await update.message.reply_text("☠️ **Wo already dead hai!** Laash se kya lootega?")
+    # 🔥 FIX: Bot Check & Self Check
+    if victim.is_bot: return await update.message.reply_text("👮 **Bot Police Bula Lega!** Use nahi loot sakte.")
+    if thief.id == victim.id: return await update.message.reply_text("❌ Khud ki jeb katega?")
+    
+    if is_dead(victim.id): return await update.message.reply_text("☠️ Laash se kya lootega?")
     
     # Checks
     if is_protected(victim.id):
-        return await update.message.reply_text(f"🛡️ **Fail!** {victim.first_name} ne Protection le rakhi hai!")
+        return await update.message.reply_text(f"🛡️ **Fail!** {victim.first_name} Protected hai!")
     
     victim_bal = get_balance(victim.id)
     if victim_bal < 100:
         return await update.message.reply_text("❌ Is bhikari ke paas kuch nahi hai!")
 
-    # Luck System (40% Chance Pass)
     if random.random() < 0.4:
         # Success
         loot = int(victim_bal * random.uniform(0.1, 0.4)) 
         update_balance(victim.id, -loot)
         update_balance(thief.id, loot)
         
-        # Group Message
         await update.message.reply_text(f"🔫 **ROBBERY SUCCESS!**\nTune {victim.first_name} ke ₹{loot} uda liye! 🏃‍♂️💨")
         
-        # 🔥 DM ALERT TO VICTIM
+        # DM ALERT
         try:
             await context.bot.send_message(
                 chat_id=victim.id,
-                text=f"⚠️ **ALERT: ROBBERY!**\n\n🕵️‍♂️ **{thief.first_name}** ne tumhe loot liya!\n📉 Amount Stolen: ₹{loot}\n💡 Tip: Use /bank to save money.",
-                parse_mode=ParseMode.MARKDOWN
+                text=(
+                    f"⚠️ **YOU WERE ROBBED!**\n"
+                    f"Robber: 👤 {thief.first_name}\n"
+                    f"Lost: ₹{loot}\n"
+                    f"Use `/bank` to save money!"
+                )
             )
-        except: pass
+        except Exception: pass
 
     else:
-        # Fail & Penalty
         update_balance(thief.id, -ROB_FAIL_PENALTY)
         await update.message.reply_text(f"👮 **POLICE AA GAYI!**\nChori pakdi gayi. Fine: ₹{ROB_FAIL_PENALTY}")
+
 
 # --- 4. KILL (Free Cost + Reward + Dead Status) ---
 async def kill_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not get_economy_status(): return await update.message.reply_text("🔴 Economy OFF.")
     
     killer = update.effective_user
-    if is_dead(killer.id): return await update.message.reply_text("👻 **Tu khud dead hai!** Pehle revive ho.")
+    if is_dead(killer.id): return await update.message.reply_text("👻 **Tu khud dead hai!**")
 
     if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke `/kill` likho.")
     
     victim = update.message.reply_to_message.from_user
-    if killer.id == victim.id: return await update.message.reply_text("❌ Khud ko kyu maar raha hai?")
     
-    # Check if victim is already dead
+    # 🔥 FIX: Bot Check & Self Check
+    if victim.is_bot: return await update.message.reply_text("🤖 **SYSTEM ERROR:** Main Amar hu! Mujhe koi nahi maar sakta.")
+    if killer.id == victim.id: return await update.message.reply_text("❌ Suicide mat kar bhai, life precious hai! ❤️")
+    
     if is_dead(victim.id):
-        return await update.message.reply_text(f"☠️ **User Already Dead!**\n{victim.first_name} pehle se mara hua hai. Laash ko aur kitna maaroge?")
+        return await update.message.reply_text(f"☠️ **Already Dead!**\n{victim.first_name} pehle se mara hua hai.")
 
-    # Protection Check
     if is_protected(victim.id):
-        return await update.message.reply_text(f"🛡️ **Mission Fail!** {victim.first_name} protected hai.")
+        return await update.message.reply_text(f"🛡️ **Fail!** {victim.first_name} Protected hai.")
 
-    # 3. Transaction Logic
-    # No Cost for Killer (Free Kill)
-    
-    # Victim loses 50%
+    # Kill Logic
     victim_bal = get_balance(victim.id)
     loss = int(victim_bal * 0.5) 
     update_balance(victim.id, -loss)
     
-    # 🔥 REWARD: Killer gets loot
     bounty = int(loss * 0.5)
     update_balance(killer.id, bounty)
     
-    # 🔥 SET TARGET DEAD
     set_dead(victim.id, True)
     update_kill_count(killer.id)
     
-    # Medical Button Logic
     kb = [[InlineKeyboardButton(f"🏥 Medical Revive (₹{HOSPITAL_FEE})", callback_data=f"revive_{victim.id}")]]
     
-    # Group Message
     await update.message.reply_text(
         f"💀 **MURDER!**\n"
         f"🔪 **Killer:** {killer.first_name}\n"
         f"🩸 **Victim:** {victim.first_name} (DIED)\n"
-        f"💰 **Loot:** Killer stole ₹{bounty}!\n\n"
-        f"🚑 **{victim.first_name} is now DEAD!**\n"
-        f"Game khelne ke liye niche button daba kar revive ho jao.",
+        f"💰 **Loot:** Killer stole ₹{bounty}!",
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
-    # 🔥 DM ALERT TO VICTIM
+    # DM ALERT
     try:
         await context.bot.send_message(
             chat_id=victim.id,
-            text=f"☠️ **YOU ARE KILLED!**\n\n🔪 **{killer.first_name}** murdered you.\n📉 You lost: ₹{loss}\n\n🏥 **Revive:** Group me 'Medical Revive' button dabao wapis zinda hone ke liye.",
-            parse_mode=ParseMode.MARKDOWN
+            text=(
+                f"⚠️ **You were killed!**\n"
+                f"Killer: 👤 {killer.first_name}\n"
+                f"You are now dead."
+            )
         )
-    except: pass
+    except Exception: pass
 
 # --- 5. REVIVE HANDLER (Button Click) ---
 async def revive_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,7 +181,6 @@ async def revive_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = q.from_user
     data = q.data
     
-    # Check if button is for this user
     target_id = int(data.split("_")[1])
     if user.id != target_id:
         return await q.answer("Ye tumhari laash nahi hai! 😠", show_alert=True)
@@ -189,7 +191,6 @@ async def revive_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if get_balance(user.id) < HOSPITAL_FEE:
         return await q.answer(f"❌ Doctor ki fees ₹{HOSPITAL_FEE} hai! Paise kama ke aao.", show_alert=True)
         
-    # Transaction
     update_balance(user.id, -HOSPITAL_FEE)
     set_dead(user.id, False)
     
