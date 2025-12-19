@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 
 # IMPORTS
 from config import TELEGRAM_TOKEN
-from database import users_col, codes_col, update_balance, get_balance, check_registered, register_user, update_group_activity
+from database import users_col, codes_col, update_balance, get_balance, check_registered, register_user, update_group_activity, update_username
 from ai_chat import get_yuki_response
 
 # MODULES
@@ -53,7 +53,7 @@ async def group_join_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     bal = get_balance(user.id)
-    # ⚠️ FIX: Markdown hata diya naam se taaki error na aaye
+    # 🔥 FIX: No ParseMode for name (Fixes Crash for Stylish Names)
     await update.message.reply_text(f"💳 {user.first_name}'s Balance: ₹{bal}", quote=True)
 
 async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,6 +65,7 @@ async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.job_queue.run_once(delete_job, 5, chat_id=msg.chat_id, data=msg.message_id)
         return
 
+    # 🔥 FIX: Spaces remove kiye
     code_name = context.args[0].strip()
 
     code_data = codes_col.find_one({"code": code_name})
@@ -131,6 +132,9 @@ async def handle_message(update, context):
     if not update.message or not update.message.text: return
     text = update.message.text
 
+    # 🔥 FIX: Update Name in DB (Fixes 'Unknown' Issue)
+    update_username(user.id, user.first_name)
+
     if chat.type in ["group", "supergroup"]:
         update_group_activity(chat.id, chat.title)
 
@@ -162,31 +166,27 @@ def main():
     app.add_handler(CommandHandler("redeem", redeem_code))
     app.add_handler(CommandHandler("shop", shop_menu))
     
-    # 🔥 Bet Command (From bet.py)
+    # Modules
     app.add_handler(CommandHandler("bet", bet.bet_menu))
     
-    # 🔥 Bank
     app.add_handler(CommandHandler("bank", bank.bank_info))
     app.add_handler(CommandHandler("deposit", bank.deposit))
     app.add_handler(CommandHandler("withdraw", bank.withdraw))
     app.add_handler(CommandHandler("loan", bank.take_loan))
     app.add_handler(CommandHandler("payloan", bank.repay_loan))
     
-    # 🔥 Market
     app.add_handler(CommandHandler("ranking", group.ranking))
     app.add_handler(CommandHandler("market", group.market_info))
     app.add_handler(CommandHandler("invest", group.invest))
     app.add_handler(CommandHandler("sell", group.sell_shares))
     app.add_handler(CommandHandler("top", leaderboard.user_leaderboard))
     
-    # 🔥 Crime
     app.add_handler(CommandHandler("pay", pay.pay_user))
     app.add_handler(CommandHandler("rob", pay.rob_user))
     app.add_handler(CommandHandler("kill", pay.kill_user))
     app.add_handler(CommandHandler("protect", pay.protect_user))
     app.add_handler(CommandHandler("alive", pay.check_status))
     
-    # 🔥 Admin
     app.add_handler(CommandHandler("eco", admin.economy_toggle))
     app.add_handler(CommandHandler("reset", admin.reset_menu))
     app.add_handler(CommandHandler("cast", admin.broadcast))
@@ -207,4 +207,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
+    
