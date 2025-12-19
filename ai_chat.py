@@ -45,7 +45,7 @@ def get_yuki_response(user_text, user_name):
             genai.configure(api_key=api_key)
             
             # 🔥 Note: 'gemini-2.5' abhi public nahi hai, isliye 1.5-flash use kar rahe hain
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.5-flash')
             
             # Chat Generation
             response = model.generate_content(f"{system_instruction}\n\nUser: {user_text}\nYuki:")
