@@ -4,10 +4,12 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 import json
 import random
+import asyncio
 
 # Imports
 from config import TELEGRAM_TOKEN
-from database import get_game_keys, update_wordseek_score, get_wordseek_leaderboard
+# 🔥 Note: Keys import kiye (Backup logic ke sath)
+from database import get_game_keys, get_all_keys, update_wordseek_score, get_wordseek_leaderboard
 
 # GAME STATE
 active_games = {}
@@ -34,10 +36,17 @@ async def auto_end_job(context: ContextTypes.DEFAULT_TYPE):
 # --- GEMINI HELPER ---
 def get_word_from_gemini():
     """Gemini se 1 Target Word lata hai (Strictly 5 Letters)"""
+    
+    # 1. Try Game Keys
     keys = get_game_keys()
+    
+    # 2. Fallback to Chat Keys
+    if not keys:
+        keys = get_all_keys()
+
     if not keys: return None
 
-    # 🔥 UPDATED PROMPT: Strictly 5 Letters
+    # 🔥 STRICT PROMPT
     prompt = (
         "Generate 1 random common English word (STRICTLY 5 letters long). "
         "Provide the word, its phonetic transcription, and a clear hint (definition). "
@@ -48,13 +57,16 @@ def get_word_from_gemini():
     for key in keys:
         try:
             genai.configure(api_key=key)
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            # 🔥 Fix: 2.5-flash use kiya (2.5 exist nahi karta)
+            model = genai.GenerativeModel('gemini-1.5-flash')
             response = model.generate_content(prompt)
             text = response.text.strip()
             if "```json" in text: text = text.replace("```json", "").replace("```", "")
+            if "```" in text: text = text.replace("```", "")
+            
             data = json.loads(text)
             
-            # 🔥 DOUBLE CHECK: Agar galti se 5 letter nahi hua to skip karo
+            # 🔥 Double Check Length
             if len(data['word']) != 5:
                 continue
                 
@@ -62,7 +74,7 @@ def get_word_from_gemini():
         except: continue
     return None
 
-# --- HELPER: GENERATE GRID ---
+# --- HELPER: GENERATE GRID (Wordle Logic) ---
 def generate_grid_string(target, guesses):
     target = target.upper()
     grid_msg = ""
@@ -70,6 +82,12 @@ def generate_grid_string(target, guesses):
     for guess in guesses:
         guess = guess.upper()
         row_emoji = ""
+        
+        # Simple Logic: 
+        # 🟩 Green: Sahi jagah
+        # 🟨 Yellow: Word me hai par galat jagah
+        # 🟥 Red: Word me nahi hai
+        
         for i, char in enumerate(guess):
             if char == target[i]:
                 row_emoji += "🟩"
@@ -77,7 +95,11 @@ def generate_grid_string(target, guesses):
                 row_emoji += "🟨"
             else:
                 row_emoji += "🟥"
-        grid_msg += f"{row_emoji} **{guess}**\n"
+        
+        # Format: 🟥 🟨 🟩 🟥 🟥  T E D D Y
+        formatted_word = " ".join(list(guess))
+        grid_msg += f"{row_emoji}   `{formatted_word}`\n"
+        
     return grid_msg
 
 # --- COMMANDS ---
@@ -91,12 +113,15 @@ async def start_wordseek(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text("🔄 **Loading Word Challenge...** 🧠")
     
-    word_data = get_word_from_gemini()
+    # Async Executor to prevent blocking
+    loop = asyncio.get_running_loop()
+    word_data = await loop.run_in_executor(None, get_word_from_gemini)
+    
     if not word_data:
-        await msg.edit_text("❌ No Game API Keys found! Ask Admin to add keys.")
+        await msg.edit_text("❌ No API Keys found! Ask Admin.")
         return
 
-    # 🔥 5 MINUTE TIMER START (300 Seconds)
+    # 🔥 5 MINUTE TIMER START
     timer_job = context.job_queue.run_once(auto_end_job, 300, data=chat_id)
 
     active_games[chat_id] = {
@@ -104,7 +129,7 @@ async def start_wordseek(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "data": word_data,
         "guesses": [],
         "message_id": msg.message_id,
-        "timer_job": timer_job # Job store kiya taaki reset kar sakein
+        "timer_job": timer_job 
     }
     
     length = len(word_data['word'])
@@ -122,7 +147,7 @@ async def start_wordseek(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def stop_wordseek(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if chat_id in active_games:
-        # Timer stop karo
+        # Stop Timer
         job = active_games[chat_id].get("timer_job")
         if job: job.schedule_removal()
         
@@ -147,8 +172,7 @@ async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Someone has already guessed your word. Please try another one!", quote=True)
         return
 
-    # 🔥 RESET TIMER ON ACTIVITY
-    # Agar koi guess karta hai to timer wapis 5 min ka ho jayega
+    # 🔥 RESET TIMER
     old_job = game.get("timer_job")
     if old_job: old_job.schedule_removal()
     new_job = context.job_queue.run_once(auto_end_job, 300, data=chat.id)
