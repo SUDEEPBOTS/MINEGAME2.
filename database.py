@@ -1,366 +1,154 @@
-import pymongo
-import time
-import datetime # 🔥 Import for Date/Time Logic
-from config import MONGO_URL
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode
+from telegram.ext import ContextTypes
+from config import OWNER_ID
+from database import (
+    users_col, groups_col, codes_col, update_balance, 
+    add_api_key, remove_api_key, get_all_keys,
+    add_game_key, remove_game_key, get_game_keys,
+    add_sticker_pack, remove_sticker_pack, get_sticker_packs,
+    wipe_database, set_economy_status, get_economy_status,
+    set_logger_group, delete_logger_group,
+    add_voice_key, remove_voice_key, get_all_voice_keys, # 🔥 Voice Key Imports
+    set_custom_voice, get_custom_voice # 🔥 TTS Imports
+)
 
-# --- DATABASE CONNECTION ---
-try:
-    client = pymongo.MongoClient(MONGO_URL)
-    db = client["CasinoBot"]
+# Admin input track karne ke liye state
+ADMIN_INPUT_STATE = {}
 
-    # Collections
-    users_col = db["users"]
-    groups_col = db["groups"]
-    investments_col = db["investments"]
-    codes_col = db["codes"]
-    keys_col = db["api_keys"]        # Chat Keys
-    game_keys_col = db["game_keys"]  # Game Keys
-    settings_col = db["settings"]
-    wordseek_col = db["wordseek_scores"] 
-    warnings_col = db["warnings"]    # Warnings
-    packs_col = db["sticker_packs"]  # Sticker Packs
-    chat_stats_col = db["chat_stats"] # 🔥 Chat Stats (Ranking)
+# --- 1. MAIN ADMIN PANEL ---
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(OWNER_ID): return
 
-    print("✅ Database Connected!")
-except Exception as e:
-    print(f"❌ DB Error: {e}")
+    # Purani state clear karo
+    if update.effective_user.id in ADMIN_INPUT_STATE:
+        del ADMIN_INPUT_STATE[update.effective_user.id]
+    
+    eco_status = "🟢 ON" if get_economy_status() else "🔴 OFF"
+    voice_id = get_custom_voice()
+    voice_keys = len(get_all_voice_keys())
+    chat_keys = len(get_all_keys())
 
-# --- USER FUNCTIONS ---
-
-def update_username(user_id, name):
-    """Har message par naam update karega"""
-    users_col.update_one({"_id": user_id}, {"$set": {"name": name}}, upsert=True)
-
-def check_registered(user_id):
-    """Check if user exists"""
-    return users_col.find_one({"_id": user_id}) is not None
-
-def register_user(user_id, name):
-    """Register new user"""
-    if check_registered(user_id): 
-        update_username(user_id, name)
-        return False
-
-    user = {
-        "_id": user_id, 
-        "name": name, 
-        "balance": 500,       
-        "bank_balance": 0,    
-        "loan": 0,            
-        "titles": [],
-        "kills": 0,
-        "protection": 0,
-        "is_dead": False      
-    } 
-    users_col.insert_one(user)
-    return True
-
-def get_user(user_id):
-    return users_col.find_one({"_id": user_id})
-
-def update_balance(user_id, amount):
-    users_col.update_one({"_id": user_id}, {"$inc": {"balance": amount}}, upsert=True)
-
-def get_balance(user_id):
-    user = users_col.find_one({"_id": user_id})
-    return user["balance"] if user else 0
-
-# --- BANK FUNCTIONS ---
-
-def get_bank_balance(user_id):
-    user = users_col.find_one({"_id": user_id})
-    return user.get("bank_balance", 0) if user else 0
-
-def update_bank_balance(user_id, amount):
-    users_col.update_one({"_id": user_id}, {"$inc": {"bank_balance": amount}}, upsert=True)
-
-def get_loan(user_id):
-    user = users_col.find_one({"_id": user_id})
-    return user.get("loan", 0) if user else 0
-
-def set_loan(user_id, amount):
-    users_col.update_one({"_id": user_id}, {"$set": {"loan": amount}}, upsert=True)
-
-# --- CRIME & STATUS FUNCTIONS ---
-
-def update_kill_count(user_id):
-    users_col.update_one({"_id": user_id}, {"$inc": {"kills": 1}}, upsert=True)
-
-def set_dead(user_id, status: bool):
-    users_col.update_one({"_id": user_id}, {"$set": {"is_dead": status}}, upsert=True)
-
-def is_dead(user_id):
-    user = users_col.find_one({"_id": user_id})
-    return user.get("is_dead", False) if user else False
-
-def set_protection(user_id, duration_hours):
-    expiry = time.time() + (duration_hours * 3600)
-    users_col.update_one({"_id": user_id}, {"$set": {"protection": expiry}}, upsert=True)
-
-def is_protected(user_id):
-    user = users_col.find_one({"_id": user_id})
-    if not user or "protection" not in user: return False
-    return time.time() < user["protection"]
-
-# --- ECONOMY & ADMIN ---
-
-def get_economy_status():
-    status = settings_col.find_one({"_id": "economy_status"})
-    if not status: return True 
-    return status["active"]
-
-def set_economy_status(status: bool):
-    settings_col.update_one({"_id": "economy_status"}, {"$set": {"active": status}}, upsert=True)
-
-def wipe_database():
-    """⚠️ DANGER: Reset Everything"""
-    users_col.delete_many({})
-    investments_col.delete_many({})
-    wordseek_col.delete_many({}) 
-    warnings_col.delete_many({})
-    packs_col.delete_many({})
-    chat_stats_col.delete_many({}) # Chat Stats bhi clear
-    groups_col.delete_many({})     # Groups bhi clear
-    return True
-
-# --- GROUP & MARKET ---
-
-def update_group_activity(group_id, group_name):
-    groups_col.update_one(
-        {"_id": group_id},
-        {"$set": {"name": group_name}, "$inc": {"activity": 1}},
-        upsert=True
+    text = (
+        f"👮‍♂️ **ADMIN CONTROL PANEL**\n\n"
+        f"⚙️ **Economy:** {eco_status}\n"
+        f"🗣 **Current Voice ID:** `{voice_id}`\n"
+        f"🔑 **Voice Keys:** `{voice_keys}`\n"
+        f"💬 **Chat Keys:** `{chat_keys}`\n\n"
+        f"👇 Select an action to manage Mimi:"
     )
 
-# 🔥 NEW: REMOVE GROUP FROM DB (For Accurate Stats)
-def remove_group(group_id):
-    """Jab Bot group se nikle, to DB se bhi hata do"""
-    groups_col.delete_one({"_id": group_id})
-    # Optional: Chat Stats bhi clear karne hain to niche wali line uncomment karo
-    # chat_stats_col.delete_many({"group_id": group_id})
-
-def get_group_price(group_id):
-    grp = groups_col.find_one({"_id": group_id})
-    if not grp: return 10.0
-    return round(10 + (grp.get("activity", 0) * 0.5), 2)
-
-# --- CHAT API KEYS (Mimi) ---
-
-def add_api_key(api_key):
-    if keys_col.find_one({"key": api_key}): return False 
-    keys_col.insert_one({"key": api_key})
-    return True
-
-def remove_api_key(api_key):
-    result = keys_col.delete_one({"key": api_key})
-    return result.deleted_count > 0
-
-def get_all_keys():
-    keys = list(keys_col.find({}, {"_id": 0, "key": 1}))
-    return [k["key"] for k in keys]
-
-# --- GAME API KEYS (WordSeek) ---
-
-def add_game_key(api_key):
-    if game_keys_col.find_one({"key": api_key}): return False 
-    game_keys_col.insert_one({"key": api_key})
-    return True
-
-def remove_game_key(api_key):
-    result = game_keys_col.delete_one({"key": api_key})
-    return result.deleted_count > 0
-
-def get_game_keys():
-    keys = list(game_keys_col.find({}, {"_id": 0, "key": 1}))
-    return [k["key"] for k in keys]
-
-# --- WORDSEEK SCORES ---
-
-def update_wordseek_score(user_id, name, points, group_id):
-    # 1. Update Global
-    wordseek_col.update_one(
-        {"_id": user_id},
-        {
-            "$inc": {"global_score": points},
-            "$set": {"name": name}
-        },
-        upsert=True
-    )
-    # 2. Update Group
-    wordseek_col.update_one(
-        {"_id": user_id},
-        {
-            "$inc": {f"group_scores.{group_id}": points}
-        }
-    )
-
-def get_wordseek_leaderboard(group_id=None):
-    if group_id:
-        cursor = wordseek_col.find({f"group_scores.{group_id}": {"$exists": True}})
-        data = list(cursor)
-        data.sort(key=lambda x: x.get("group_scores", {}).get(str(group_id), 0), reverse=True)
-        return data[:10]
-    else:
-        cursor = wordseek_col.find().sort("global_score", -1).limit(10)
-        return list(cursor)
-
-# --- GROUP TOOLS (WARNINGS) ---
-
-def add_warning(group_id, user_id):
-    """Warning add karta hai aur count return karta hai"""
-    data = warnings_col.find_one({"group_id": group_id, "user_id": user_id})
-    if data:
-        new_count = data["count"] + 1
-        warnings_col.update_one({"_id": data["_id"]}, {"$set": {"count": new_count}})
-        return new_count
-    else:
-        warnings_col.insert_one({"group_id": group_id, "user_id": user_id, "count": 1})
-        return 1
-
-def remove_warning(group_id, user_id):
-    """1 Warning kam karta hai"""
-    data = warnings_col.find_one({"group_id": group_id, "user_id": user_id})
-    if data and data["count"] > 0:
-        new_count = data["count"] - 1
-        if new_count == 0:
-            warnings_col.delete_one({"_id": data["_id"]})
-        else:
-            warnings_col.update_one({"_id": data["_id"]}, {"$set": {"count": new_count}})
-        return new_count
-    return 0
-
-def reset_warnings(group_id, user_id):
-    """Warnings clean karta hai (Ban ke baad)"""
-    warnings_col.delete_one({"group_id": group_id, "user_id": user_id})
-
-# --- STICKER PACKS ---
-
-def add_sticker_pack(pack_name):
-    """Sticker Pack ka naam save karega"""
-    if not packs_col.find_one({"name": pack_name}):
-        packs_col.insert_one({"name": pack_name})
-        return True
-    return False
-
-def remove_sticker_pack(pack_name):
-    """Pack remove karega"""
-    if packs_col.find_one({"name": pack_name}):
-        packs_col.delete_one({"name": pack_name})
-        return True
-    return False
-
-def get_sticker_packs():
-    """Saare packs ki list dega"""
-    data = list(packs_col.find())
-    return [d["name"] for d in data]
-
-# --- 🔥 CHAT STATS & RANKING (NEW) 🔥 ---
-
-def update_chat_stats(group_id, user_id, name):
-    """
-    Updates message count.
-    Auto-resets 'today' (Daily) and 'week' (Weekly) counts based on date.
-    """
-    now = datetime.datetime.now()
-    today_str = now.strftime("%Y-%m-%d")
-    week_str = now.strftime("%Y-%W") # Year-WeekNumber
-
-    # Find existing data
-    data = chat_stats_col.find_one({"group_id": group_id, "user_id": user_id})
-
-    if not data:
-        # New Entry
-        chat_stats_col.insert_one({
-            "group_id": group_id,
-            "user_id": user_id,
-            "name": name,
-            "overall": 1,
-            "today": 1,
-            "week": 1,
-            "last_date": today_str,
-            "last_week": week_str
-        })
-    else:
-        # Prepare Update
-        update_query = {"$inc": {"overall": 1}, "$set": {"name": name}}
+    kb = [
+        [InlineKeyboardButton(f"Economy: {eco_status}", callback_data="admin_toggle_eco")],
+        [InlineKeyboardButton("📢 Broadcast", callback_data="admin_cast_ask"), InlineKeyboardButton("🎁 Promo Code", callback_data="admin_code_ask")],
+        [InlineKeyboardButton("💰 Add Money", callback_data="admin_add_ask"), InlineKeyboardButton("💸 Take Money", callback_data="admin_take_ask")],
         
-        # Check Day Reset
-        if data.get("last_date") != today_str:
-            update_query["$set"]["today"] = 1 # Reset to 1
-            update_query["$set"]["last_date"] = today_str
-        else:
-            update_query["$inc"]["today"] = 1
-            
-        # Check Week Reset
-        if data.get("last_week") != week_str:
-            update_query["$set"]["week"] = 1 # Reset to 1
-            update_query["$set"]["last_week"] = week_str
-        else:
-            update_query["$inc"]["week"] = 1
-
-        chat_stats_col.update_one({"_id": data["_id"]}, update_query)
-
-def get_top_chatters(group_id, mode="overall"):
-    """
-    mode: 'overall', 'today', 'week'
-    Returns Top 10 users sorted by mode.
-    """
-    cursor = chat_stats_col.find({"group_id": group_id}).sort(mode, -1).limit(10)
-    return list(cursor)
-
-def get_total_messages(group_id):
-    """Group ke total messages count karega"""
-    pipeline = [
-        {"$match": {"group_id": group_id}},
-        {"$group": {"_id": None, "total": {"$sum": "$overall"}}}
+        # Keys Management
+        [InlineKeyboardButton("🔑 Chat Keys", callback_data="admin_chat_keys_menu"), InlineKeyboardButton("🎮 Game Keys", callback_data="admin_game_keys_menu")],
+        
+        # 🔥 VOICE & TTS SECTION 🔥
+        [InlineKeyboardButton("🎙 Voice Keys", callback_data="admin_voice_keys_menu"), InlineKeyboardButton("🗣 Set Custom TTS", callback_data="admin_tts_set")],
+        
+        # Stickers & Logger
+        [InlineKeyboardButton("👻 Stickers", callback_data="admin_stickers_menu"), InlineKeyboardButton("📝 Logger", callback_data="admin_logger_menu")],
+        
+        [InlineKeyboardButton("☢️ WIPE DATA", callback_data="admin_wipe_ask"), InlineKeyboardButton("❌ Close", callback_data="admin_close")]
     ]
-    result = list(chat_stats_col.aggregate(pipeline))
-    return result[0]["total"] if result else 0
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+    else:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
 
-# --- 🔥 LOGGER SETTINGS (Re-added for Logger) 🔥 ---
+# --- 2. CALLBACK HANDLER ---
+async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    data = q.data
+    user_id = q.from_user.id
+    
+    if str(user_id) != str(OWNER_ID):
+        await q.answer("❌ Owner Only!", show_alert=True)
+        return
 
-def set_logger_group(group_id):
-    """Logger Group ID save karega"""
-    settings_col.update_one(
-        {"_id": "logger_settings"},
-        {"$set": {"group_id": int(group_id)}},
-        upsert=True
-    )
+    # --- VOICE KEY MENU ---
+    if data == "admin_voice_keys_menu":
+        kb = [
+            [InlineKeyboardButton("➕ Add Voice Key", callback_data="admin_vkey_add")],
+            [InlineKeyboardButton("➖ Del Voice Key", callback_data="admin_vkey_del")],
+            [InlineKeyboardButton("🔙 Back", callback_data="admin_back")]
+        ]
+        await q.edit_message_text("🎙 **ElevenLabs Voice Keys**\nMimi ki awaaz ke liye API keys manage karein.", reply_markup=InlineKeyboardMarkup(kb))
+        return
 
-def get_logger_group():
-    """Logger Group ID layega"""
-    data = settings_col.find_one({"_id": "logger_settings"})
-    return data["group_id"] if data else None
+    # --- CUSTOM TTS SET ---
+    if data == "admin_tts_set":
+        ADMIN_INPUT_STATE[user_id] = 'set_tts_id'
+        kb = [[InlineKeyboardButton("🔙 Cancel", callback_data="admin_back")]]
+        await q.edit_message_text(f"🎙 **Set Custom Voice ID**\n\nElevenLabs se Voice ID bhejo.\n\n👉 Current: `{get_custom_voice()}`", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+        return
 
-def delete_logger_group():
-    """Logger ID delete karega"""
-    settings_col.delete_one({"_id": "logger_settings"})
+    # --- INPUT TRIGGERS ---
+    if data == "admin_vkey_add":
+        ADMIN_INPUT_STATE[user_id] = 'add_voice_key'
+        await q.edit_message_text("➕ Send ElevenLabs API Key:")
+    elif data == "admin_vkey_del":
+        ADMIN_INPUT_STATE[user_id] = 'del_voice_key'
+        keys = "\n".join([f"`{k}`" for k in get_all_voice_keys()])
+        await q.edit_message_text(f"➖ Send Key to delete:\n\n{keys}", parse_mode=ParseMode.MARKDOWN)
+    elif data == "admin_cast_ask":
+        ADMIN_INPUT_STATE[user_id] = 'broadcast'
+        await q.edit_message_text("📢 Send anything to Broadcast (Photo/Video/Text):")
+    elif data == "admin_add_ask":
+        ADMIN_INPUT_STATE[user_id] = 'add_money'
+        await q.edit_message_text("💰 Format: `UserID Amount`")
+    elif data == "admin_toggle_eco":
+        set_economy_status(not get_economy_status())
+        await admin_panel(update, context)
+    elif data == "admin_back":
+        await admin_panel(update, context)
+    elif data == "admin_close":
+        await q.message.delete()
 
-# ... (Purane code ke niche) ...
+# --- 3. INPUT HANDLER ---
+async def handle_admin_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if str(user_id) != str(OWNER_ID): return False
 
-# 🔥 VOICE KEYS COLLECTIONS (ElevenLabs)
-voice_keys_col = db["voice_keys"]
+    state = ADMIN_INPUT_STATE.get(user_id)
+    if not state: return False
 
-def add_voice_key(api_key):
-    """ElevenLabs Key Add karega"""
-    if voice_keys_col.find_one({"key": api_key}): return False 
-    voice_keys_col.insert_one({"key": api_key})
-    return True
+    msg = update.message
+    text = msg.text.strip() if msg.text else None
 
-def remove_voice_key(api_key):
-    """Key Remove karega (Admin ya Auto-Delete)"""
-    result = voice_keys_col.delete_one({"key": api_key})
-    return result.deleted_count > 0
+    # 🔥 CUSTOM TTS ID INPUT 🔥
+    if state == 'set_tts_id' and text:
+        set_custom_voice(text)
+        await msg.reply_text(f"✅ **Custom Voice Set:** `{text}`")
+        del ADMIN_INPUT_STATE[user_id]
+        return True
 
-def get_all_voice_keys():
-    """Saari Keys ki list dega"""
-    keys = list(voice_keys_col.find({}, {"_id": 0, "key": 1}))
-    return [k["key"] for k in keys]
+    # 🔥 VOICE KEY INPUT 🔥
+    if state == 'add_voice_key' and text:
+        if add_voice_key(text): await msg.reply_text("✅ Voice Key Added!")
+        else: await msg.reply_text("⚠️ Key already exists.")
+        del ADMIN_INPUT_STATE[user_id]
+        return True
 
-# --- 🔥 GLOBAL STATS (For Logger .stats) 🔥 ---
+    # 🔥 BROADCAST 🔥
+    if state == 'broadcast':
+        # logic for copying message to all users/groups
+        await msg.reply_text("📢 Broadcasting...")
+        del ADMIN_INPUT_STATE[user_id]
+        return True
 
-def get_total_users():
-    return users_col.count_documents({})
+    # 🔥 MONEY 🔥
+    if state == 'add_money' and text:
+        try:
+            uid, amt = map(int, text.split())
+            update_balance(uid, amt)
+            await msg.reply_text(f"✅ Added {amt} to {uid}")
+        except: await msg.reply_text("❌ Format error.")
+        del ADMIN_INPUT_STATE[user_id]
+        return True
 
-def get_total_groups():
-    return groups_col.count_documents({})
+    return False
