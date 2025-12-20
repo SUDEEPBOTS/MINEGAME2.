@@ -1,5 +1,5 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
+from telegram.constants import ParseMode, ChatMemberStatus
 from telegram.ext import ContextTypes
 import random
 import asyncio
@@ -10,9 +10,7 @@ from database import update_wordseek_score, get_wordseek_leaderboard
 # GAME STATE
 active_games = {}
 
-# --- 🔥 VALID WORDS LIST (Dictionary for Validation) ---
-# Is list me wo words hain jo users guess kar sakte hain.
-# Agar user koi aisa word likhega jo isme nahi hai, to bot mana kar dega.
+# --- 🔥 VALID WORDS LIST (Updated Dictionary) ---
 VALID_GUESSES = {
     "APPLE", "TIGER", "BREAD", "CHAIR", "SMILE", "BEACH", "DREAM", "LIGHT", "HEART", "WATCH",
     "WATER", "MUSIC", "MONEY", "HOUSE", "WORLD", "PHONE", "TABLE", "PAPER", "RIVER", "NIGHT",
@@ -36,10 +34,11 @@ VALID_GUESSES = {
     "SNAKE", "MOUSE", "RABBIT", "PUPPY", "KITTY", "BIRDS", "DUCKS", "GEESE", "PLANT", "TREES",
     "GRASS", "FLOWER", "ROSES", "TULIP", "LEAFY", "ROOTS", "SEEDS", "GROWN", "FARMS", "CROPS",
     "STORM", "RAINY", "SUNNY", "WINDY", "SNOWY", "FOGGY", "MISTY", "CLEAR", "HUMID", "FROST",
-    "STONE", "STEEL", "METAL", "GLASS", "BRICK", "WOODS", "PLASTIC", "GOLD", "SILVER", "COPPER"
+    "STONE", "STEEL", "METAL", "GLASS", "BRICK", "WOODS", "PLASTIC", "GOLD", "SILVER", "COPPER",
+    "READY", "START", "HELLO"
 }
 
-# --- 🔥 TARGET WORDS (With Hints) ---
+# --- 🔥 TARGET WORDS ---
 WORD_LIST = [
     {"word": "APPLE", "phonetic": "/ˈæp.əl/", "meaning": "A round fruit with red or green skin."},
     {"word": "TIGER", "phonetic": "/ˈtaɪ.ɡər/", "meaning": "A large wild cat with stripes."},
@@ -73,7 +72,7 @@ WORD_LIST = [
     {"word": "QUEEN", "phonetic": "/kwiːn/", "meaning": "Female ruler of a country."}
 ]
 
-# Ensure targets are also in valid guesses
+# Ensure targets are valid
 for w in WORD_LIST:
     VALID_GUESSES.add(w["word"])
 
@@ -125,14 +124,13 @@ def generate_grid_string(target, guesses):
 # --- COMMANDS ---
 
 async def start_wordseek(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Auto Delete Command
     try: await update.message.delete()
     except: pass
 
     chat_id = update.effective_chat.id
     
     if chat_id in active_games:
-        warn = await update.message.reply_text("⚠️ Game pehle se chal raha hai! `/end` karo.")
+        warn = await update.message.reply_text("⚠️ Game pehle se chal raha hai!", quote=False)
         await asyncio.sleep(3)
         try: await warn.delete()
         except: pass
@@ -168,13 +166,40 @@ async def start_wordseek(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"> 💡 **Hint:** {hint}"
     )
     
-    await msg.edit_text(text, parse_mode=ParseMode.MARKDOWN)
+    # 🔥 INLINE BUTTON FOR STOP
+    kb = [[InlineKeyboardButton("🛑 End Game", callback_data="end_wordseek")]]
+    
+    await msg.edit_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
 
 async def stop_wordseek(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Command se stop
     try: await update.message.delete()
     except: pass
+    await end_game_logic(update.effective_chat.id, context, update)
 
-    chat_id = update.effective_chat.id
+# --- INLINE BUTTON HANDLER (New) ---
+async def end_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    chat = update.effective_chat
+    user = update.effective_user
+    
+    # Check Admin
+    is_admin = False
+    try:
+        member = await chat.get_member(user.id)
+        if member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+            is_admin = True
+    except: pass
+    
+    if not is_admin:
+        await q.answer("❌ Only Admins can end the game!", show_alert=True)
+        return
+
+    await q.answer("🛑 Ending Game...")
+    await end_game_logic(chat.id, context, update)
+
+# --- SHARED END LOGIC ---
+async def end_game_logic(chat_id, context, update):
     if chat_id in active_games:
         game = active_games[chat_id]
         
@@ -185,12 +210,18 @@ async def stop_wordseek(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
         
         del active_games[chat_id]
-        await update.message.reply_text("🛑 **Game Ended!**")
+        
+        # Agar callback se aaya hai to edit karo, warna new msg
+        if update.callback_query:
+            await update.callback_query.message.edit_text("🛑 **Game Ended by Admin!**", parse_mode=ParseMode.MARKDOWN)
+        else:
+            await context.bot.send_message(chat_id, "🛑 **Game Ended!**", parse_mode=ParseMode.MARKDOWN)
     else:
-        warn = await update.message.reply_text("❌ Koi game nahi chal raha.")
-        await asyncio.sleep(3)
-        try: await warn.delete()
-        except: pass
+        if not update.callback_query:
+            warn = await context.bot.send_message(chat_id, "❌ Koi game nahi chal raha.")
+            await asyncio.sleep(3)
+            try: await warn.delete()
+            except: pass
 
 # --- GUESS HANDLER ---
 async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -206,11 +237,11 @@ async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 1. Length Check
     if len(user_guess) != len(target): return
 
-    # 🔥 DELETE USER MESSAGE IMMEDIATELY
+    # 🔥 DELETE USER MESSAGE
     try: await update.message.delete()
     except: pass
 
-    # 2. VALID WORD CHECK (English Dictionary Simulation)
+    # 2. VALIDATION
     if user_guess not in VALID_GUESSES:
         warn = await update.message.reply_text(f"⚠️ **{user_guess}** is not a valid word!", quote=False)
         await asyncio.sleep(2)
@@ -272,15 +303,19 @@ async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"> 💡 **Hint:** {hint}"
             )
             
+            # Button wapis lagana padega edit ke waqt
+            kb = [[InlineKeyboardButton("🛑 End Game", callback_data="end_wordseek")]]
+            
             await context.bot.edit_message_text(
                 chat_id=chat.id,
                 message_id=game['message_id'],
                 text=new_text,
+                reply_markup=InlineKeyboardMarkup(kb),
                 parse_mode=ParseMode.MARKDOWN
             )
         except: pass
 
-# --- LEADERBOARD ---
+# --- LEADERBOARD & CALLBACKS ---
 async def wordseek_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
     except: pass
@@ -292,6 +327,11 @@ async def wordseek_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     data = q.data
     
+    # 🔥 END BUTTON HANDLER
+    if data == "end_wordseek":
+        await end_game_callback(update, context)
+        return
+
     if data.startswith("wrank_"):
         mode = data.split("_")[1]
         group_id = str(update.effective_chat.id) if mode == "group" else None
