@@ -21,7 +21,8 @@ def make_bar(count, max_count):
     return "▰" * filled + "▱" * empty
 
 async def show_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("DEBUG: /crank triggered") # 🔥 Debug Print (Logs me dikhega)
+    # 🔥 Debug Print
+    print("DEBUG: /crank triggered") 
 
     if update.callback_query:
         chat_id = update.effective_chat.id
@@ -99,15 +100,24 @@ async def send_rank_message(chat_id, mode, update, context):
             parse_mode=ParseMode.MARKDOWN
         )
 
-# --- CALLBACK HANDLER ---
+# --- CALLBACK HANDLER (FIXED) ---
 async def rank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     data = q.data
     
+    # 🔥 FIXED CLOSE LOGIC
     if data == "close_rank":
-        await q.message.delete()
+        try:
+            await q.answer("Closing...") # Animation stop karega
+            await q.message.delete()
+        except Exception as e:
+            print(f"Error deleting message: {e}")
         return
 
     if data.startswith("rank_"):
+        try:
+            await q.answer() # Animation stop
+        except: pass
+        
         mode = data.split("_")[1]
         await send_rank_message(update.effective_chat.id, mode, update, context)
