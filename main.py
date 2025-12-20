@@ -10,8 +10,8 @@ from config import TELEGRAM_TOKEN
 from database import users_col, codes_col, update_balance, get_balance, check_registered, register_user, update_group_activity, update_username
 from ai_chat import get_yuki_response
 
-# MODULES (🔥 Added wordseek)
-import admin, start, help, group, leaderboard, pay, bank, bet, wordseek
+# MODULES (🔥 Added grouptools)
+import admin, start, help, group, leaderboard, pay, bank, bet, wordseek, grouptools
 
 # --- FLASK SERVER ---
 app = Flask('')
@@ -41,7 +41,6 @@ async def ensure_registered(update, context):
 
 # --- COMMANDS ---
 
-# 🔥 /bal COMMAND 🔥
 async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.reply_to_message:
         target = update.message.reply_to_message.from_user
@@ -103,12 +102,12 @@ async def callback_handler(update, context):
     data = q.data
     uid = q.from_user.id
     
-    # 🔥 1. ADMIN PANEL 🔥
+    # 1. ADMIN PANEL
     if data.startswith("admin_"):
         await admin.admin_callback(update, context)
         return
 
-    # 🔥 2. WORD SEEK GAME 🔥
+    # 2. WORD SEEK GAME
     if data.startswith(("wrank_", "new_wordseek_", "close_wrank")):
         await wordseek.wordseek_callback(update, context)
         return
@@ -118,17 +117,17 @@ async def callback_handler(update, context):
         await start.start_callback(update, context)
         return
 
-    # 4. Bet Logic
+    # 4. BET LOGIC
     if data.startswith(("set_", "clk_", "cash_", "close_", "noop_", "rebet_")):
         await bet.bet_callback(update, context)
         return
 
-    # 5. Revive Logic
+    # 5. REVIVE LOGIC
     if data.startswith("revive_"):
         await pay.revive_callback(update, context)
         return
 
-    # 6. Register
+    # 6. REGISTER
     if data.startswith("reg_start_"):
         target_id = int(data.split("_")[2])
         if uid != target_id: return await q.answer("Not for you!", show_alert=True)
@@ -136,7 +135,7 @@ async def callback_handler(update, context):
         else: await q.answer("Already registered!")
         return
 
-    # 7. Shop
+    # 7. SHOP
     if data.startswith("buy_"):
         parts = data.split("_")
         target_id = int(parts[2])
@@ -159,7 +158,6 @@ async def handle_message(update, context):
         return
     
     # 🔥 2. WORD SEEK GUESS CHECK 🔥
-    # Agar game chal raha hai to guesses yahan check honge
     await wordseek.handle_word_guess(update, context)
 
     if not update.message: return
@@ -226,6 +224,22 @@ def main():
     app.add_handler(CommandHandler("new", wordseek.start_wordseek))
     app.add_handler(CommandHandler("end", wordseek.stop_wordseek))
     app.add_handler(CommandHandler("wrank", wordseek.wordseek_rank))
+    
+    # 🔥 GROUP TOOLS HANDLERS (Regex for . and /) 🔥
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]warn$'), grouptools.warn_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]unwarn$'), grouptools.unwarn_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]mute$'), grouptools.mute_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]unmute$'), grouptools.unmute_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]ban$'), grouptools.ban_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]unban$'), grouptools.unban_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]kick$'), grouptools.kick_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]promote'), grouptools.promote_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]demote$'), grouptools.demote_user))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]title'), grouptools.set_title))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]pin$'), grouptools.pin_message))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]unpin$'), grouptools.unpin_message))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]d$'), grouptools.delete_msg))
+    app.add_handler(MessageHandler(filters.Regex(r'^[\./]help$'), grouptools.admin_help))
     
     app.add_handler(CallbackQueryHandler(callback_handler))
     
