@@ -21,6 +21,8 @@ def make_bar(count, max_count):
     return "▰" * filled + "▱" * empty
 
 async def show_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print("DEBUG: /crank triggered") # 🔥 Debug Print (Logs me dikhega)
+
     if update.callback_query:
         chat_id = update.effective_chat.id
     else:
@@ -65,8 +67,6 @@ async def send_rank_message(chat_id, mode, update, context):
             else: icon = f"{i}."
             
             # 🔥 FINAL FORMAT 🔥
-            # 1. 👤 Name
-            # └ ▰▰▰▱▱ • 450
             text += f"{icon} 👤 **{name}**\n"
             text += f"   └ {bar} • `{count}`\n\n"
     
