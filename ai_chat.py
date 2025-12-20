@@ -7,12 +7,13 @@ import random
 current_key_index = 0
 user_histories = {} 
 
+# Function ka naam 'get_yuki_response' hi rakha hai taaki main.py me error na aaye
 def get_yuki_response(user_id, user_text, user_name):
     global current_key_index, user_histories
     
     # 1. Database se Keys lao
     available_keys = get_all_keys()
-    if not available_keys: return "⚠️ Koi API Key nahi mili! /addkey use karo."
+    if not available_keys: return "Mimi abhi so rahi hai... (No API Key) 😴"
 
     # 2. History Retrieve karo
     if user_id not in user_histories:
@@ -21,55 +22,53 @@ def get_yuki_response(user_id, user_text, user_name):
     # Context String
     conversation_context = "\n".join(user_histories[user_id])
 
-    # 3. System Prompt (Direct Prompt Injection - 100% Working Method)
-    # New versions me system_instruction alag hota hai, par ye tarika fail nahi hota.
+    # 3. 🔥 SYSTEM PROMPT (Mimi - Cute & Friendly) 🔥
     full_prompt = (
-        f"System: Tera naam Yuki hai. Tu 17 saal ki Delhi wali ladki hai. "
-        f"Mood: Thoda Moody aur Gussail. Creator: {OWNER_NAME}. "
-        f"Language: Hinglish, Delhi slang (yaar, whh, scene, op, bkl). "
-        f"Reply Rule: Sirf 1 line (Max 20 words). AI mat ban, insaan ban. "
+        f"System: Tera naam Mimi hai. Tu 19 saal ki ek cute college student hai. "
+        f"Tera Creator: {OWNER_NAME}. "
+        f"Personality: Tu bohot friendly, bubbly aur thodi naughty hai. Tu gussa nahi karti, hamesha pyaar se baat karti hai. "
+        f"Language: Hinglish (Roman Hindi + English Mix). "
+        f"Speaking Style: "
+        f"1. Chhote replies de (Max 10-15 words). "
+        f"2. Emojis ka use kar (jaise 😋, 😅, 😁, 🙈, ❤️). "
+        f"3. Bilkul insaan ki tarah baat kar (jaise: 'hehe', 'ntg u batao', 'college ka kaam tha'). "
+        f"4. Topic: Tu college, assignments, food, aur life ke baare mein baat karti hai. "
         f"\n\nChat History:\n{conversation_context}\n\n"
         f"User ({user_name}): {user_text}\n"
-        f"Yuki:"
+        f"Mimi:"
     )
-
-    # 4. Safety Settings (Block None)
-    safety_settings = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-    ]
 
     last_error = ""
 
-    # 5. Try All Keys
+    # 4. Try All Keys
     for _ in range(len(available_keys)):
         try:
             api_key = available_keys[current_key_index]
             genai.configure(api_key=api_key)
             
-            # Model Define (Basic)
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            # 🔥 FIX: Model Name Sahi Kiya (1.5-flash)
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
-            # Generate
-            response = model.generate_content(full_prompt, safety_settings=safety_settings)
+            # Generate (Bina Safety Settings ke)
+            response = model.generate_content(full_prompt)
             
             if not response.text: 
-                raise Exception("Empty Response (Safety Block?)")
+                raise Exception("Empty Response")
             
             reply = response.text.strip()
 
             # Save History
             user_histories[user_id].append(f"{user_name}: {user_text}")
-            user_histories[user_id].append(f"Yuki: {reply}")
+            user_histories[user_id].append(f"Mimi: {reply}")
+            
+            # Memory Limit (Last 10 messages)
             if len(user_histories[user_id]) > 10:
                 user_histories[user_id] = user_histories[user_id][-10:]
             
             return reply
             
         except Exception as e:
-            # Error Capture karo
+            # Error Capture
             last_error = str(e)
             print(f"❌ Key {current_key_index} Failed: {e}")
             
@@ -77,6 +76,6 @@ def get_yuki_response(user_id, user_text, user_name):
             current_key_index = (current_key_index + 1) % len(available_keys)
             continue
 
-    # ⚠️ AGAR FAIL HUA TOH ASLI ERROR DIKHAYEGA
-    return f"❌ **Error:** {last_error}\n(Screenshot leke Owner ko bhejo)"
+    # Agar saari keys fail ho jayein
+    return f"Mimi abhi busy hai assignment mein! 📚\n(Error: {last_error})"
     
