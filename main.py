@@ -34,23 +34,11 @@ async def delete_job(context):
 async def ensure_registered(update, context):
     user = update.effective_user
     if not check_registered(user.id):
-        kb = [[InlineKeyboardButton("📝 Register", callback_data=f"reg_start_{user.id}")]]
-        await update.message.reply_text(f"🛑 **{user.first_name}, Register First!**\nGet ₹500 Bonus.", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
-        return False
+        register_user(user.id, user.first_name)
     return True
-
-# --- GROUP REWARD ---
-async def group_join_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.new_chat_members: return
-    for member in update.message.new_chat_members:
-        if member.id == context.bot.id:
-            adder = update.message.from_user
-            update_balance(adder.id, 1000)
-            await update.message.reply_text(f"🎉 **Thanks {adder.first_name}!**\nAdded ₹1000 to your wallet!")
 
 # --- COMMANDS ---
 
-# 🔥 UPDATED BALANCE COMMAND 🔥
 async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check agar kisi ke message par reply kiya hai
     if update.message.reply_to_message:
@@ -58,7 +46,6 @@ async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         target = update.effective_user
 
-    # Bot check
     if target.is_bot:
         await update.message.reply_text("🤖 Bots ke paas paise nahi hote bhai!")
         return
@@ -67,8 +54,8 @@ async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"💳 **{target.first_name}'s Balance:** ₹{bal}", parse_mode=ParseMode.MARKDOWN)
 
 async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await ensure_registered(update, context): return
     user = update.effective_user
+    if not check_registered(user.id): register_user(user.id, user.first_name)
     
     if not context.args: 
         msg = await update.message.reply_text("⚠️ Usage: `/redeem <code>`")
@@ -76,8 +63,8 @@ async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     code_name = context.args[0].strip()
-
     code_data = codes_col.find_one({"code": code_name})
+    
     if not code_data: return await update.message.reply_text("❌ Invalid Code!")
     if user.id in code_data.get("redeemed_by", []): return await update.message.reply_text("⚠️ Already redeemed!")
     if len(code_data.get("redeemed_by", [])) >= code_data.get("limit", 0): return await update.message.reply_text("❌ Code Expired!")
@@ -89,8 +76,12 @@ async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🎉 **Redeemed!**\nAdded: ₹{amount}\nBalance: ₹{get_balance(user.id)}", parse_mode=ParseMode.MARKDOWN)
 
 async def shop_menu(update, context):
-    if not await ensure_registered(update, context): return
-    uid = update.effective_user.id
+    user = update.effective_user
+    if not check_registered(user.id): register_user(user.id, user.first_name)
+    
+    uid = user.id
+    try: await update.message.delete(); except: pass
+    
     kb = []
     for k, v in SHOP_ITEMS.items():
         kb.append([InlineKeyboardButton(f"{v['name']} - ₹{v['price']}", callback_data=f"buy_{k}_{uid}")])
@@ -103,27 +94,27 @@ async def callback_handler(update, context):
     data = q.data
     uid = q.from_user.id
     
-       # 🔥 ADMIN PANEL LOGIC 🔥
+    # 🔥 1. ADMIN PANEL BUTTONS 🔥
     if data.startswith("admin_"):
         await admin.admin_callback(update, context)
         return
-    # -----------------------
-    # 🔥 0. START MENU NAVIGATION (Modern UI) 🔥
+
+    # 2. START MENU NAVIGATION
     if data.startswith(("help_", "start_chat_ai", "back_home")):
         await start.start_callback(update, context)
         return
 
-    # 1. Bet Logic (bet.py)
+    # 3. Bet Logic
     if data.startswith(("set_", "clk_", "cash_", "close_", "noop_", "rebet_")):
         await bet.bet_callback(update, context)
         return
 
-    # 2. Medical Revive (pay.py)
+    # 4. Revive Logic
     if data.startswith("revive_"):
         await pay.revive_callback(update, context)
         return
 
-    # 3. Register (Local)
+    # 5. Register
     if data.startswith("reg_start_"):
         target_id = int(data.split("_")[2])
         if uid != target_id: return await q.answer("Not for you!", show_alert=True)
@@ -131,7 +122,7 @@ async def callback_handler(update, context):
         else: await q.answer("Already registered!")
         return
 
-    # 4. Shop (Local)
+    # 6. Shop
     if data.startswith("buy_"):
         parts = data.split("_")
         target_id = int(parts[2])
@@ -144,31 +135,33 @@ async def callback_handler(update, context):
         await q.message.delete()
         return
 
-# --- MESSAGE HANDLER ---
+# --- MESSAGE HANDLER (TEXT & MEDIA) ---
 async def handle_message(update, context):
     user = update.effective_user
     chat = update.effective_chat
-    if not update.message or not update.message.text: return
-    text = update.message.text
     
-     # 🔥 ADMIN INPUT CHECK 🔥
-    # Agar Admin Panel ka koi option select hai, to text wahan bhej do
+    # 🔥 1. ADMIN INPUT CHECK (Broadcast/Money) 🔥
+    # Agar Admin Panel ka koi button dabaya hai to ye function chalega
     if await admin.handle_admin_input(update, context):
         return
-    # -----------------------
-    # Updat name
-    update_username(user.id, user.first_name)
+    # ---------------------------------------------
 
+    if not update.message or not update.message.text: return
+    text = update.message.text
+
+    # Update Data
+    update_username(user.id, user.first_name)
     if chat.type in ["group", "supergroup"]:
         update_group_activity(chat.id, chat.title)
 
+    # Chat Logic (Mimi/Yuki)
     should_reply = False
     if chat.type == "private":
         should_reply = True
     elif chat.type in ["group", "supergroup"]:
         if update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id:
             should_reply = True
-        elif "yuki" in text.lower():
+        elif "mimi" in text.lower() or "yuki" in text.lower(): # Mimi naam check
             should_reply = True
         elif context.bot.username in text:
             should_reply = True
@@ -183,14 +176,15 @@ def main():
     keep_alive()
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
+    # Handlers
     app.add_handler(CommandHandler("start", start.start))
     app.add_handler(CommandHandler("help", help.help_command))
+    app.add_handler(CommandHandler("admin", admin.admin_panel)) # 🔥 NEW ADMIN CMD
     
     app.add_handler(CommandHandler("balance", balance_cmd))
     app.add_handler(CommandHandler("redeem", redeem_code))
     app.add_handler(CommandHandler("shop", shop_menu))
     
-    # Modules
     app.add_handler(CommandHandler("bet", bet.bet_menu))
     
     app.add_handler(CommandHandler("bank", bank.bank_info))
@@ -211,22 +205,16 @@ def main():
     app.add_handler(CommandHandler("protect", pay.protect_user))
     app.add_handler(CommandHandler("alive", pay.check_status))
     
+    # Old Admin commands (Backup ke liye rakhe hain, par /admin main hai)
     app.add_handler(CommandHandler("eco", admin.economy_toggle))
-    app.add_handler(CommandHandler("reset", admin.reset_menu))
-    app.add_handler(CommandHandler("cast", admin.broadcast))
-    app.add_handler(CommandHandler("code", admin.create_code))
-    app.add_handler(CommandHandler("add", admin.add_money))
-    app.add_handler(CommandHandler("addkey", admin.add_key_cmd))
-    app.add_handler(CommandHandler("delkey", admin.remove_key_cmd))
-    app.add_handler(CommandHandler("keys", admin.list_keys_cmd))
-    app.add_handler(CommandHandler("admin", admin.admin_panel))
-
+    
     app.add_handler(CallbackQueryHandler(admin.reset_callback, pattern="^confirm_wipe$|^cancel_wipe$"))
     app.add_handler(CallbackQueryHandler(callback_handler))
     
-    # Welcome Handler
+    # Welcome & Messages
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, group.welcome_user))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    # 🔥 Filters.ALL taaki Text, Photo, Video sab Admin Input me jaye
+    app.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), handle_message))
     
     print("🚀 BOT STARTED SUCCESSFULLY!")
     app.run_polling()
