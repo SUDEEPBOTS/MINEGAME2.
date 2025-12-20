@@ -58,7 +58,7 @@ def get_word_from_gemini():
         try:
             genai.configure(api_key=key)
             # 🔥 Fix: 2.5-flash use kiya (2.5 exist nahi karta)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.5-flash')
             response = model.generate_content(prompt)
             text = response.text.strip()
             if "```json" in text: text = text.replace("```json", "").replace("```", "")
