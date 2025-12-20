@@ -16,7 +16,8 @@ try:
     game_keys_col = db["game_keys"]  # Game Keys
     settings_col = db["settings"]
     wordseek_col = db["wordseek_scores"] 
-    warnings_col = db["warnings"]    # 🔥 Warnings Collection (New)
+    warnings_col = db["warnings"]    # Warnings
+    packs_col = db["sticker_packs"]  # 🔥 Sticker Packs (New)
 
     print("✅ Database Connected!")
 except Exception as e:
@@ -114,7 +115,7 @@ def wipe_database():
     users_col.delete_many({})
     investments_col.delete_many({})
     wordseek_col.delete_many({}) 
-    warnings_col.delete_many({}) # Warnings bhi clear hongi
+    warnings_col.delete_many({})
     return True
 
 # --- GROUP & MARKET ---
@@ -191,7 +192,7 @@ def get_wordseek_leaderboard(group_id=None):
         cursor = wordseek_col.find().sort("global_score", -1).limit(10)
         return list(cursor)
 
-# --- 🔥 GROUP TOOLS (WARNINGS) 🔥 ---
+# --- GROUP TOOLS (WARNINGS) ---
 
 def add_warning(group_id, user_id):
     """Warning add karta hai aur count return karta hai"""
@@ -219,3 +220,24 @@ def remove_warning(group_id, user_id):
 def reset_warnings(group_id, user_id):
     """Warnings clean karta hai (Ban ke baad)"""
     warnings_col.delete_one({"group_id": group_id, "user_id": user_id})
+
+# --- 🔥 STICKER PACKS (NEW) 🔥 ---
+
+def add_sticker_pack(pack_name):
+    """Sticker Pack ka naam save karega"""
+    if not packs_col.find_one({"name": pack_name}):
+        packs_col.insert_one({"name": pack_name})
+        return True
+    return False
+
+def remove_sticker_pack(pack_name):
+    """Pack remove karega"""
+    if packs_col.find_one({"name": pack_name}):
+        packs_col.delete_one({"name": pack_name})
+        return True
+    return False
+
+def get_sticker_packs():
+    """Saare packs ki list dega"""
+    data = list(packs_col.find())
+    return [d["name"] for d in data]
