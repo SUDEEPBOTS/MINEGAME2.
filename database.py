@@ -120,6 +120,7 @@ def wipe_database():
     warnings_col.delete_many({})
     packs_col.delete_many({})
     chat_stats_col.delete_many({}) # Chat Stats bhi clear
+    groups_col.delete_many({})     # Groups bhi clear
     return True
 
 # --- GROUP & MARKET ---
@@ -130,6 +131,13 @@ def update_group_activity(group_id, group_name):
         {"$set": {"name": group_name}, "$inc": {"activity": 1}},
         upsert=True
     )
+
+# 🔥 NEW: REMOVE GROUP FROM DB (For Accurate Stats)
+def remove_group(group_id):
+    """Jab Bot group se nikle, to DB se bhi hata do"""
+    groups_col.delete_one({"_id": group_id})
+    # Optional: Chat Stats bhi clear karne hain to niche wali line uncomment karo
+    # chat_stats_col.delete_many({"group_id": group_id})
 
 def get_group_price(group_id):
     grp = groups_col.find_one({"_id": group_id})
