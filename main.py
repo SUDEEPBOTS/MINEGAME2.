@@ -20,7 +20,7 @@ from tts import generate_voice
 # MODULES
 import admin, start, help, group, leaderboard, pay, bet, wordseek, grouptools, chatstat, logger, events
 
-# 🔥 Bank Updated Import (check_balance added)
+# 🔥 Bank Updated Import
 import bank 
 from bank import check_balance 
 
@@ -45,12 +45,13 @@ async def delete_job(context):
     try: await context.bot.delete_message(context.job.chat_id, context.job.data)
     except: pass
 
-# --- SHOP MENU (Local) ---
+# --- SHOP MENU ---
 async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Agar callback se call hua hai to user id nikalo
+    # Logic to handle both Command and Button Click
     if update.callback_query:
         uid = update.callback_query.from_user.id
-        msg_func = update.callback_query.message.reply_text
+        # Button click me EDIT karna better lagta hai
+        msg_func = update.callback_query.message.edit_text 
     else:
         uid = update.effective_user.id
         msg_func = update.message.reply_text
@@ -75,7 +76,7 @@ async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     codes_col.update_one({"code": code}, {"$push": {"redeemed_by": user.id}})
     await update.message.reply_text(f"🎉 Redeemed ₹{data['amount']}!")
 
-# --- CALLBACK HANDLER (FIXED FOR START/HELP BUTTONS) ---
+# --- CALLBACK HANDLER (ALL BUTTONS FIXED) ---
 async def callback_handler(update, context):
     q = update.callback_query
     data = q.data
@@ -87,31 +88,44 @@ async def callback_handler(update, context):
         except: pass
         return
 
-    # 2. START BUTTONS FIX (Redirects)
-    # Agar Start menu ke buttons aise data bhej rahe hain:
+    # 2. START MENU BUTTONS (Routing)
+    # Ye codes Start Message ke buttons se match hone chahiye
     if data == "open_shop":
+        await q.answer()
         await shop_menu(update, context)
         return
     
     if data == "open_games":
-        await bet.bet_menu(update, context) # Games button seedha Bet menu kholega
+        await q.answer()
+        # Games ka help menu dikhao
+        kb = [[InlineKeyboardButton("🔙 Back", callback_data="back_home")]]
+        msg = "🎮 **GAME MENU**\n\n🎲 `/bet` - Bomb Game\n🔠 `/new` - Word Seek\n💰 `/invest` - Stock Market"
+        await q.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
         return
 
     if data == "open_ranking":
+        await q.answer()
+        # Leaderboard call karo (Updated leaderboard.py zaroori hai)
         await leaderboard.user_leaderboard(update, context)
         return
 
     if data == "open_commands":
+        await q.answer()
         await help.help_callback(update, context) # Redirect to Help
         return
-
-    # 3. START & HELP MODULES
-    if data.startswith(("start_", "st_", "back_home")):
+    
+    if data == "back_home":
+        await q.answer()
         await start.start_callback(update, context)
         return
-        
-    if data.startswith(("help_", "mod_")): # Added 'mod_' just in case
+
+    # 3. HELP MODULES
+    if data.startswith(("help_", "mod_")): 
         await help.help_callback(update, context)
+        return
+        
+    if data.startswith(("start_", "st_")):
+        await start.start_callback(update, context)
         return
 
     # 4. ADMIN PANEL
@@ -124,7 +138,7 @@ async def callback_handler(update, context):
         await wordseek.wordseek_callback(update, context)
         return
 
-    # 6. CHAT STATS & RANKING
+    # 6. CHAT STATS
     if data.startswith(("rank_", "hide_rank")):
         await chatstat.rank_callback(update, context)
         return
@@ -149,7 +163,7 @@ async def callback_handler(update, context):
         update_balance(uid, -item["price"])
         users_col.update_one({"_id": uid}, {"$push": {"titles": item["name"]}})
         await q.answer(f"Bought {item['name']}!")
-        await q.message.delete()
+        # await q.message.delete() # Shop band nahi karte, taaki aur khareed sake
         return
     
     # 9. REVIVE
@@ -163,7 +177,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
     
-    # 🚨 1. ENFORCEMENT (BAN & MUTE)
+    # 1. ENFORCEMENT
     if chat.type in ["group", "supergroup"] and not user.is_bot:
         if is_user_banned(chat.id, user.id) or is_user_muted(chat.id, user.id):
             try: await update.message.delete()
@@ -174,11 +188,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user.is_bot:
         status = check_spam(user.id)
         if status == "BLOCKED":
-            await update.message.reply_text(f"🚫 **Spam Detected!**\n{user.first_name}, you are blocked for 8 minutes.")
+            await update.message.reply_text(f"🚫 **Spam Detected!**\n{user.first_name}, blocked for 8 mins.")
             return
         elif status == False: return
 
-    # 3. DB UPDATE & STATS
+    # 3. STATS
     update_username(user.id, user.first_name)
     if chat.type in ["group", "supergroup"] and not user.is_bot:
         update_chat_stats(chat.id, user.id, user.first_name)
@@ -188,7 +202,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await admin.handle_admin_input(update, context): return
     await wordseek.handle_word_guess(update, context)
 
-    # 5. STICKER LOGIC
+    # 5. STICKER
     if update.message.sticker:
         if chat.type == "private" or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id) or random.random() < 0.2:
             sticker_id = await get_mimi_sticker(context.bot)
@@ -239,8 +253,8 @@ def main():
     app.add_handler(CommandHandler("help", help.help_command))
     app.add_handler(CommandHandler("admin", admin.admin_panel))
     
-    # 🔥 Economy (Use check_balance for /bal)
-    app.add_handler(CommandHandler("bal", check_balance)) # Updated to new Stylish Bank Balance
+    # Economy
+    app.add_handler(CommandHandler("bal", check_balance))
     app.add_handler(CommandHandler("redeem", redeem_code))
     app.add_handler(CommandHandler("shop", shop_menu))
     
