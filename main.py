@@ -171,7 +171,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if sticker_id: await update.message.reply_sticker(sticker_id)
         return
 
-    # 6. TEXT & VOICE AI
+        # 6. TEXT & VOICE AI (Updated)
     text = update.message.text
     if not text: return
 
@@ -181,6 +181,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id: should_reply = True
 
     if should_reply:
+        # Check if user wants Voice
         voice_triggers = ["voice", "audio", "bol", "bolo", "speak", "suna", "rec", "batao", "sunao", "kaho"]
         wants_voice = any(v in text.lower() for v in voice_triggers)
 
@@ -190,13 +191,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if wants_voice:
             await context.bot.send_chat_action(chat_id=chat.id, action="record_voice")
             
-            # 🔥 CRITICAL FIX: 'await' lagaya hai yahan (EdgeTTS ke liye)
+            # Generate Voice
             audio_path = await generate_voice(ai_reply)
             
             if audio_path:
                 try:
                     with open(audio_path, 'rb') as voice_file:
-                        await update.message.reply_voice(voice=voice_file, caption=f"🗣 **Mimi:** {ai_reply}")
+                        # 🔥 CHANGE: Caption hata diya hai
+                        await update.message.reply_voice(voice=voice_file)
                     os.remove(audio_path)
                     return
                 except Exception as e:
