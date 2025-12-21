@@ -4,9 +4,13 @@ import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
+from database import update_balance, get_user
 
 # Global Dictionary
 ttt_games = {}
+
+# Reward Config
+REWARD_AMOUNT = 500  # Amount won for beating the bot or another player
 
 # Winning Combinations
 WIN_COMBOS = [
@@ -19,26 +23,39 @@ def to_fancy(text):
     mapping = {'A': 'Λ', 'E': 'Є', 'S': 'δ', 'O': 'σ', 'T': 'ᴛ', 'N': 'ɴ', 'M': 'ᴍ', 'U': 'ᴜ', 'R': 'ʀ', 'D': 'ᴅ', 'C': 'ᴄ', 'P': 'ᴘ', 'G': 'ɢ', 'B': 'ʙ', 'L': 'ʟ', 'W': 'ᴡ', 'K': 'ᴋ', 'J': 'ᴊ', 'Y': 'ʏ', 'I': 'ɪ', 'H': 'ʜ'}
     return "".join(mapping.get(c.upper(), c) for c in text)
 
-# --- SMART BOT LOGIC (Minimax-Lite) ---
-def get_bot_move(board):
-    # 1. Check if Bot can win now
+# --- BOT LOGIC (DIFFICULTY BASED) ---
+def get_bot_move(board, difficulty):
+    available = [i for i, x in enumerate(board) if x == " "]
+    if not available: return None
+
+    # EASY: Completely Random
+    if difficulty == "easy":
+        return random.choice(available)
+
+    # MEDIUM: 50% chance to play smart, 50% random
+    if difficulty == "medium":
+        if random.random() < 0.3:
+             return random.choice(available)
+        # Else fall through to Hard logic (Smart)
+
+    # HARD: Minimax-Lite (Win > Block > Center > Random)
+    # 1. Win now
     for combo in WIN_COMBOS:
         line = [board[i] for i in combo]
         if line.count("O") == 2 and line.count(" ") == 1:
             return combo[line.index(" ")]
 
-    # 2. Check if Player is winning, Block them
+    # 2. Block Player
     for combo in WIN_COMBOS:
         line = [board[i] for i in combo]
         if line.count("X") == 2 and line.count(" ") == 1:
             return combo[line.index(" ")]
 
-    # 3. Take Center if available
+    # 3. Take Center
     if board[4] == " ": return 4
 
-    # 4. Take random available spot
-    available = [i for i, x in enumerate(board) if x == " "]
-    return random.choice(available) if available else None
+    # 4. Random
+    return random.choice(available)
 
 # --- 1. START COMMAND (/zero) ---
 async def start_ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -51,7 +68,7 @@ async def start_ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
     kb = [
         [InlineKeyboardButton("👥 1 vs 1 (PvP)", callback_data=f"ttt_init_pvp_{user.id}")],
-        [InlineKeyboardButton("🤖 Play with Bot", callback_data=f"ttt_init_bot_{user.id}")],
+        [InlineKeyboardButton("🤖 Play with Bot", callback_data=f"ttt_diff_ask_{user.id}")],
         [InlineKeyboardButton("❌ Close", callback_data="ttt_close")]
     ]
     
@@ -96,11 +113,53 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.message.delete()
         return
 
-    # B. INITIALIZE GAME
+    # B. DIFFICULTY SELECTION
+    if data.startswith("ttt_diff_ask_"):
+        user_id = int(data.split("_")[3])
+        if user.id != user_id:
+             await q.answer("Not your game!", show_alert=True)
+             return
+             
+        kb = [
+            [InlineKeyboardButton("🟢 Easy", callback_data=f"ttt_init_bot_easy_{user_id}")],
+            [InlineKeyboardButton("🟡 Medium", callback_data=f"ttt_init_bot_medium_{user_id}")],
+            [InlineKeyboardButton("🔴 Hard", callback_data=f"ttt_init_bot_hard_{user_id}")],
+            [InlineKeyboardButton("🔙 Back", callback_data=f"ttt_back_start_{user_id}")]
+        ]
+        await q.edit_message_text(
+            f"<blockquote><b>🤖 {to_fancy('SELECT DIFFICULTY')}</b></blockquote>",
+            reply_markup=InlineKeyboardMarkup(kb),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Back to Start
+    if data.startswith("ttt_back_start_"):
+        # We can't easily go back to start without context arguments, so we just restart the menu logic locally
+        # Simplest way is to just call the initial menu logic again manually or delete/resend.
+        # Here we just show the initial menu text again.
+        await q.edit_message_text(
+            f"<blockquote><b>🎮 {to_fancy('TIC TAC TOE')}</b></blockquote>\n<blockquote><b>👤 ᴘʟᴀʏᴇʀ :</b> {html.escape(user.first_name)}\n<b>⚔️ ᴄʜᴏᴏsᴇ ᴍᴏᴅᴇ :</b> 👇</blockquote>",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👥 1 vs 1 (PvP)", callback_data=f"ttt_init_pvp_{user.id}")],
+                [InlineKeyboardButton("🤖 Play with Bot", callback_data=f"ttt_diff_ask_{user.id}")],
+                [InlineKeyboardButton("❌ Close", callback_data="ttt_close")]
+            ]),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # C. INITIALIZE GAME
     if data.startswith("ttt_init_"):
         parts = data.split("_")
         mode = parts[2] # 'pvp' or 'bot'
-        p1_id = int(parts[3])
+        
+        if mode == "bot":
+            difficulty = parts[3] # easy/medium/hard
+            p1_id = int(parts[4])
+        else:
+            difficulty = None
+            p1_id = int(parts[3])
         
         game_data = {
             "board": [" "] * 9,
@@ -109,26 +168,26 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "p2": None, 
             "p1_name": user.first_name,
             "p2_name": "Waiting...",
-            "mode": mode
+            "mode": mode,
+            "diff": difficulty
         }
 
-        # If Bot Mode, setup Bot immediately
         if mode == "bot":
-            game_data["p2"] = 0 # 0 ID for Bot
-            game_data["p2_name"] = "Mimi Bot"
+            game_data["p2"] = 0 
+            game_data["p2_name"] = f"Mimi ({difficulty.title()})"
 
         ttt_games[msg_id] = game_data
         
         status_text = f"❌ <b>Turn:</b> {html.escape(user.first_name)}"
         
         await q.edit_message_text(
-            f"<blockquote><b>🎮 {to_fancy('GAME STARTED')} ({mode.upper()})</b></blockquote>\n<blockquote>{status_text}</blockquote>",
+            f"<blockquote><b>🎮 {to_fancy('GAME STARTED')}</b></blockquote>\n<blockquote>{status_text}</blockquote>",
             reply_markup=get_board_markup(msg_id),
             parse_mode=ParseMode.HTML
         )
         return
 
-    # C. PLAYER MOVE
+    # D. PLAYER MOVE
     if data.startswith("ttt_move_"):
         if msg_id not in ttt_games:
             await q.answer("❌ Game Expired!", show_alert=True)
@@ -139,75 +198,70 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game = ttt_games[msg_id]
         idx = int(data.split("_")[2])
         
-        # --- PvP LOGIC: ASSIGN P2 ---
+        # --- PvP ASSIGN ---
         if game["mode"] == "pvp":
             if game["p2"] is None:
-                # 🔥 FIX: Prevent Self Play
                 if user.id == game["p1"]:
-                    await q.answer("⚠️ You cannot play against yourself! Wait for a friend.", show_alert=True)
+                    await q.answer("⚠️ Wait for opponent!", show_alert=True)
                     return
                 game["p2"] = user.id
                 game["p2_name"] = user.first_name
         
-        # --- CHECK TURN ---
+        # --- TURN CHECK ---
         is_p1 = (user.id == game["p1"])
         is_p2 = (user.id == game["p2"])
         
-        # Player Validation
         if game["turn"] == "X" and not is_p1:
-            await q.answer("❌ Not your turn! (Waiting for X)", show_alert=True)
+            await q.answer("❌ Not your turn!", show_alert=True)
             return
         if game["turn"] == "O":
             if game["mode"] == "bot":
-                 await q.answer("❌ Wait for Bot to move!", show_alert=True)
+                 await q.answer("❌ Bot is moving!", show_alert=True)
                  return
             if not is_p2:
-                await q.answer("❌ Not your turn! (Waiting for O)", show_alert=True)
+                await q.answer("❌ Not your turn!", show_alert=True)
                 return
         
-        # Check Cell Empty
         if game["board"][idx] != " ":
-            await q.answer("⚠️ Already taken!", show_alert=True)
+            await q.answer("⚠️ Taken!", show_alert=True)
             return
             
-        # --- EXECUTE MOVE (PLAYER) ---
+        # --- MOVE ---
         game["board"][idx] = game["turn"]
         
-        # CHECK WIN AFTER PLAYER MOVE
+        # CHECK WIN (Player)
         winner = check_winner(game["board"])
         if winner:
             await end_game(q, game, winner, msg_id)
             return
 
-        # SWITCH TURN
+        # SWITCH
         game["turn"] = "O" if game["turn"] == "X" else "X"
         
-        # --- IF BOT MODE: BOT MAKES MOVE ---
+        # --- BOT MOVE ---
         if game["mode"] == "bot" and game["turn"] == "O":
-            # 1. Show Player Move first (Visual update)
+            # Update UI first
             await q.edit_message_text(
-                f"<blockquote><b>🎮 {to_fancy('GAME ON')}</b></blockquote>\n<blockquote>🤖 <b>Turn:</b> Mimi Bot is thinking...</blockquote>",
+                f"<blockquote><b>🎮 {to_fancy('GAME ON')}</b></blockquote>\n<blockquote>🤖 <b>Turn:</b> Mimi is thinking...</blockquote>",
                 reply_markup=get_board_markup(msg_id),
                 parse_mode=ParseMode.HTML
             )
             
-            # 2. Calculate Bot Move
-            # asyncio.sleep(0.5) # Optional delay for realism
-            bot_idx = get_bot_move(game["board"])
+            # Bot Move
+            bot_idx = get_bot_move(game["board"], game["diff"])
             
             if bot_idx is not None:
                 game["board"][bot_idx] = "O"
                 
-                # Check Win after Bot Move
+                # Check Win (Bot)
                 winner = check_winner(game["board"])
                 if winner:
                     await end_game(q, game, winner, msg_id)
                     return
                 
-                # Switch back to Player
                 game["turn"] = "X"
         
-        # UPDATE UI FOR NEXT TURN
+        # NEXT TURN UI
         next_player = game["p1_name"] if game["turn"] == "X" else game["p2_name"]
         
         await q.edit_message_text(
@@ -216,13 +270,27 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML
         )
 
-# --- HELPER: END GAME ---
+# --- HELPER: END GAME & REWARD ---
 async def end_game(q, game, winner, msg_id):
     if winner == "Draw":
-        txt = f"<blockquote><b>🤝 {to_fancy('GAME DRAW')}!</b></blockquote>\n<blockquote>Nobody won this round.</blockquote>"
+        txt = f"<blockquote><b>🤝 {to_fancy('GAME DRAW')}!</b></blockquote>\n<blockquote>Nobody won.</blockquote>"
     else:
-        w_name = game["p1_name"] if winner == "X" else game["p2_name"]
-        txt = f"<blockquote><b>👑 {to_fancy('WINNER')} : {html.escape(w_name)}</b></blockquote>\n<blockquote>🎉 Congratulations!</blockquote>"
+        # Determine Winner ID & Name
+        if winner == "X":
+            w_id = game["p1"]
+            w_name = game["p1_name"]
+        else:
+            w_id = game["p2"]
+            w_name = game["p2_name"]
+            
+        # Give Reward (If winner is a real user)
+        if w_id != 0:
+            update_balance(w_id, REWARD_AMOUNT)
+            prize_txt = f"\n💰 <b>Won:</b> ₹{REWARD_AMOUNT}"
+        else:
+            prize_txt = "\n🤖 <b>Bot Won!</b> Better luck next time."
+
+        txt = f"<blockquote><b>👑 {to_fancy('WINNER')} : {html.escape(w_name)}</b></blockquote>\n<blockquote>🎉 Congratulations!{prize_txt}</blockquote>"
     
     if msg_id in ttt_games: del ttt_games[msg_id]
     await q.edit_message_text(txt, parse_mode=ParseMode.HTML)
