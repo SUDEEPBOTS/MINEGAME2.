@@ -84,6 +84,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ```
 ɪ ᴀᴍ ᴛʜᴇ ғᴀsᴛᴇsᴛ ᴀɴᴅ ᴘᴏᴡᴇʀғᴜʟ ᴇᴄᴏɴᴏᴍʏ & ᴀɪ ʙᴏᴛ ᴡɪᴛʜ sᴏᴍᴇ ᴀᴡᴇsᴏᴍᴇ ғᴇᴀᴛᴜʀᴇs.
 ```
+
 ```
 ╭─ ⚙️ SYSTEM STATUS
 │ ➥ UPTIME: {uptime}
@@ -92,9 +93,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 │ ➥ RAM CONSUMPTION: {ram:.1f}%
 ╰───────────────
 ```
-
 •──────────────────────•
-'''
+```
 ✦ ᴘᴏᴡєʀєᴅ ʙʏ © ᯓ𓂃❛ 𝐒 𝛖 𝐝 ֟፝ᥱ 𝛆 𝛒 </𝟑 𝁘ໍ𝀛
 ```
 """
@@ -267,6 +267,7 @@ async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ```
 ɪ ᴀᴍ ᴛʜᴇ ғᴀsᴛᴇsᴛ ᴀɴᴅ ᴘᴏᴡᴇʀғᴜʟ ᴇᴄᴏɴᴏᴍʏ & ᴀɪ ʙᴏᴛ ᴡɪᴛʜ sᴏᴍᴇ ᴀᴡᴇsᴏᴍᴇ ғᴇᴀᴛᴜʀᴇs.
 ```
+
 ```
 ➥ᴜᴘᴛɪᴍᴇ: `{uptime}`
 ➥sᴇʀᴠᴇʀ sᴛᴏʀᴀɢᴇ: `{disk}%`
