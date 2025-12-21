@@ -165,18 +165,29 @@ async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await chat.send_message(f"❌ Error: {e}")
 
 async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try: await update.message.delete()
-    except: pass
-    
-    if not await is_admin(update, context): return
-    if not update.message.reply_to_message: return await update.message.reply_text("⚠️ Reply karke use karo.")
+    if not await is_admin(update, context):
+        return
+
+    if not update.message.reply_to_message:
+        return await update.message.reply_text(
+            "⚠️ **Reply required!**\nKisi user ke message par reply karke `.ban` use karo.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+    try:
+        await update.message.delete()
+    except:
+        pass
 
     target = update.message.reply_to_message.from_user
     try:
         await update.effective_chat.ban_member(target.id)
-        await update.effective_chat.send_message(f"🚫 **BANNED!**\n👤 {target.first_name} ko group se nikal diya gaya.")
+        await update.effective_chat.send_message(
+            f"🚫 **BANNED!**\n👤 {target.first_name}",
+            parse_mode=ParseMode.MARKDOWN
+        )
     except Exception as e:
-        await update.effective_chat.send_message(f"❌ **Error:** Main Ban nahi kar pa raha.\nCheck karo main Admin hoon ya nahi.\nDebug: `{e}`")
+        await update.effective_chat.send_message(f"❌ Error: {e}")
 
 async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try: await update.message.delete()
