@@ -6,7 +6,7 @@ MONGO_URL = os.getenv("MONGO_URL")
 OWNER_ID = 6356015122  # Tumhara (Owner) Telegram ID
 
 # 🤖 AI CHAT CONFIG
-OWNER_NAME = "SUDEEP"  # Yahan apna naam likho (Yuki tumhe is naam se bulayegi)
+OWNER_NAME = "ᯓ𓂃❛ 𝐒 𝛖 𝐝 ֟፝ᥱ 𝛆 𝛒 </𝟑 𝁘ໍ𝀛𓂃🍷"  # Yahan apna naam likho (Yuki tumhe is naam se bulayegi)
 
 # 🎮 GAME SETTINGS
 GRID_SIZE = 4
