@@ -70,7 +70,7 @@ async def redeem_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     codes_col.update_one({"code": code}, {"$push": {"redeemed_by": user.id}})
     await update.message.reply_text(f"🎉 Redeemed ₹{data['amount']}!")
 
-# --- CALLBACK HANDLER (FIXED) ---
+# --- CALLBACK HANDLER (FIXED FOR BUTTONS) ---
 async def callback_handler(update, context):
     q = update.callback_query
     data = q.data
@@ -81,8 +81,7 @@ async def callback_handler(update, context):
         await q.message.delete()
         return
 
-    # 2. START & HELP (Merged Logic)
-    # st_ prefix means Start Menu, help_ prefix means Help Menu
+    # 2. START & HELP (Merged Logic for st_ and help_)
     if data.startswith(("start_", "st_", "back_home")):
         await start.start_callback(update, context)
         return
@@ -134,7 +133,7 @@ async def callback_handler(update, context):
         await pay.revive_callback(update, context)
         return
 
-# --- MESSAGE HANDLER (ENFORCEMENT & AI) ---
+# --- MESSAGE HANDLER (VOICE FIXED) ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message: return
     user = update.effective_user
@@ -182,8 +181,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id: should_reply = True
 
     if should_reply:
-        # Check if user wants Voice
-        voice_triggers = ["voice", "audio", "bol", "bolo", "speak", "suna", "rec", "batao", "sunao"]
+        voice_triggers = ["voice", "audio", "bol", "bolo", "speak", "suna", "rec", "batao", "sunao", "kaho"]
         wants_voice = any(v in text.lower() for v in voice_triggers)
 
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
@@ -191,24 +189,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if wants_voice:
             await context.bot.send_chat_action(chat_id=chat.id, action="record_voice")
-            # Generate Voice
-            audio_path = generate_voice(ai_reply)
+            
+            # 🔥 CRITICAL FIX: 'await' lagaya hai yahan (EdgeTTS ke liye)
+            audio_path = await generate_voice(ai_reply)
             
             if audio_path:
                 try:
                     with open(audio_path, 'rb') as voice_file:
                         await update.message.reply_voice(voice=voice_file, caption=f"🗣 **Mimi:** {ai_reply}")
-                    os.remove(audio_path) # Delete file after sending
+                    os.remove(audio_path)
                     return
                 except Exception as e:
                     print(f"Voice Send Error: {e}")
-                    # Fallback to text if voice fails
                     await update.message.reply_text(ai_reply)
             else:
-                # TTS Failed (No keys or error)
                 await update.message.reply_text(ai_reply)
         else:
-            # Normal Text Reply
             await update.message.reply_text(ai_reply)
 
 # --- MAIN ENGINE ---
@@ -232,13 +228,13 @@ def main():
     app.add_handler(CommandHandler("stats", logger.stats_bot))
     app.add_handler(CommandHandler("ping", logger.ping_bot))
     
-    # Games & Market (Invest/TopInvest)
+    # Games & Market
     app.add_handler(CommandHandler("bet", bet.bet_menu))
     app.add_handler(CommandHandler("new", wordseek.start_wordseek))
     app.add_handler(CommandHandler("market", group.market_info))
     app.add_handler(CommandHandler("invest", group.invest))
     app.add_handler(CommandHandler("sell", group.sell_shares))
-    app.add_handler(CommandHandler("topinvest", group.top_investors)) # 🔥 Added
+    app.add_handler(CommandHandler("topinvest", group.top_investors))
     
     # Banking
     app.add_handler(CommandHandler("bank", bank.bank_info))
@@ -262,7 +258,7 @@ def main():
     app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, events.track_leave))
     app.add_handler(MessageHandler(filters.Regex(r'(?i)^[\./]crank'), chatstat.show_leaderboard))
     
-    # Group Admin Tools (Regex)
+    # Group Admin Tools
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]id$'), grouptools.get_id))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]warn$'), grouptools.warn_user))
     app.add_handler(MessageHandler(filters.Regex(r'^[\./]mute$'), grouptools.mute_user))
