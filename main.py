@@ -17,11 +17,8 @@ from database import (
 from ai_chat import get_yuki_response, get_mimi_sticker
 from tts import generate_voice 
 
-# MODULES
-import admin, start, help, group, leaderboard, pay, bet, wordseek, grouptools, chatstat, logger, events
-
-# 🔥 New Info Module
-import info
+# MODULES (Added tictactoe here)
+import admin, start, help, group, leaderboard, pay, bet, wordseek, grouptools, chatstat, logger, events, info, tictactoe
 
 # 🔥 Bank Updated Import
 import bank 
@@ -50,6 +47,7 @@ async def delete_job(context):
 
 # --- SHOP MENU ---
 async def shop_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Logic to handle both Command and Button Click
     if update.callback_query:
         uid = update.callback_query.from_user.id
         msg_func = update.callback_query.message.edit_text 
@@ -98,7 +96,7 @@ async def callback_handler(update, context):
     if data == "open_games":
         await q.answer()
         kb = [[InlineKeyboardButton("🔙 Back", callback_data="back_home")]]
-        msg = "🎮 **GAME MENU**\n\n🎲 `/bet` - Bomb Game\n🔠 `/new` - Word Seek\n💰 `/invest` - Stock Market"
+        msg = "🎮 **GAME MENU**\n\n🎲 `/bet` - Bomb Game\n🔠 `/new` - Word Seek\n❌ `/zero` - Tic Tac Toe\n💰 `/invest` - Stock Market"
         await q.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
         return
 
@@ -146,7 +144,12 @@ async def callback_handler(update, context):
         await bet.bet_callback(update, context)
         return
 
-    # 8. REGISTRATION & SHOP BUYING
+    # 8. TIC TAC TOE (ZERO CUTS) 🔥
+    if data.startswith("ttt_"):
+        await tictactoe.ttt_callback(update, context)
+        return
+
+    # 9. REGISTRATION & SHOP BUYING
     if data.startswith("reg_start_"):
         if uid != int(data.split("_")[2]): return await q.answer("Not for you!", show_alert=True)
         if register_user(uid, q.from_user.first_name): await q.edit_message_text("✅ Registered!")
@@ -163,7 +166,7 @@ async def callback_handler(update, context):
         await q.answer(f"Bought {item['name']}!")
         return
     
-    # 9. REVIVE
+    # 10. REVIVE
     if data.startswith("revive_"):
         await pay.revive_callback(update, context)
         return
@@ -250,7 +253,7 @@ def main():
     app.add_handler(CommandHandler("help", help.help_command))
     app.add_handler(CommandHandler("admin", admin.admin_panel))
     
-    # 🔥 User Info & Fun (New) - INDENTATION FIXED HERE
+    # User Info & Fun
     app.add_handler(CommandHandler("info", info.user_info))
     app.add_handler(CommandHandler("love", info.love_calculator))
     app.add_handler(CommandHandler("stupid", info.stupid_meter))
@@ -269,6 +272,7 @@ def main():
     # Games & Market
     app.add_handler(CommandHandler("bet", bet.bet_menu))
     app.add_handler(CommandHandler("new", wordseek.start_wordseek))
+    app.add_handler(CommandHandler("zero", tictactoe.start_ttt)) # 🔥 New Tic Tac Toe
     app.add_handler(CommandHandler("market", group.market_info))
     app.add_handler(CommandHandler("invest", group.invest))
     app.add_handler(CommandHandler("sell", group.sell_shares))
@@ -291,9 +295,14 @@ def main():
     # Callback Handlers
     app.add_handler(CallbackQueryHandler(callback_handler))
     
-    # Event Handlers
+    # Event Handlers (Join/Leave/VC)
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, events.welcome_user))
     app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, events.track_leave))
+    # 🔥 New VC Handlers
+    app.add_handler(MessageHandler(filters.StatusUpdate.VIDEO_CHAT_STARTED, events.vc_handler))
+    app.add_handler(MessageHandler(filters.StatusUpdate.VIDEO_CHAT_ENDED, events.vc_handler))
+    app.add_handler(MessageHandler(filters.StatusUpdate.VIDEO_CHAT_PARTICIPANTS_INVITED, events.vc_handler))
+    
     app.add_handler(MessageHandler(filters.Regex(r'(?i)^[\./]crank'), chatstat.show_leaderboard))
     
     # Group Admin Tools
