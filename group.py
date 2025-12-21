@@ -1,3 +1,4 @@
+import html
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
@@ -8,6 +9,11 @@ from database import (
     register_user, get_user
 )
 
+# Fancy Font Helper
+def to_fancy(text):
+    mapping = {'A': 'Λ', 'E': 'Є', 'S': 'δ', 'O': 'σ', 'T': 'ᴛ', 'N': 'ɴ', 'M': 'ᴍ', 'U': 'ᴜ', 'R': 'ʀ', 'D': 'ᴅ', 'C': 'ᴄ', 'P': 'ᴘ', 'G': 'ɢ', 'B': 'ʙ', 'L': 'ʟ', 'W': 'ᴡ', 'K': 'ᴋ', 'J': 'ᴊ', 'Y': 'ʏ', 'I': 'ɪ', 'H': 'ʜ'}
+    return "".join(mapping.get(c.upper(), c) for c in text)
+
 # --- 1. WELCOME MESSAGE ---
 async def welcome_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.new_chat_members: return
@@ -17,10 +23,9 @@ async def welcome_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in update.message.new_chat_members:
         if member.id == context.bot.id: continue
         
-        # 🔥 TUMHARA FORMAT
-        await update.message.reply_text(
-            f"👀 Hey {member.first_name} welcome to ゜{chat_title}"
-        )
+        # 🔥 FORMATTED MESSAGE
+        msg_text = f"<blockquote>👀 Hey <b>{html.escape(member.first_name)}</b>, welcome to <b>゜{html.escape(chat_title)}</b></blockquote>"
+        await update.message.reply_text(msg_text, parse_mode=ParseMode.HTML)
 
 # --- 2. GLOBAL GROUP RANKING ---
 async def ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -29,34 +34,34 @@ async def ranking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     top_groups = list(top_groups_cursor)
 
     if not top_groups:
-        await update.message.reply_text("❌ Market abhi sunsaan hai! (No active groups)")
+        await update.message.reply_text("❌ Market is silent! (No active groups)", parse_mode=ParseMode.HTML)
         return
 
-    msg = "🏢 **GLOBAL MARKET RANKING** 🏢\n\n"
+    msg = f"<blockquote><b>🏢 {to_fancy('GLOBAL MARKET RANKING')}</b></blockquote>\n\n"
     rank = 1
     
     for grp in top_groups:
-        name = grp.get("name", "Unknown Group")
+        name = html.escape(grp.get("name", "Unknown Group"))
         activity = grp.get("activity", 0)
         
-        # Price Calculation Logic matches database.py
+        # Price Calculation Logic
         price = round(10 + (activity * 0.1), 2)
 
         if rank == 1:
-            msg += f"👑 **{name}**\n   🔥 Score: {activity} | 📈 Price: ₹{price}\n\n"
+            msg += f"<blockquote>👑 <b>{name}</b>\n   🔥 Score: {activity} | 📈 Price: ₹{price}</blockquote>\n"
         else:
-            msg += f"{rank}. **{name}**\n   🔥 Score: {activity} | 📈 Price: ₹{price}\n\n"
+            msg += f"<blockquote><b>{rank}. {name}</b>\n   🔥 Score: {activity} | 📈 Price: ₹{price}</blockquote>\n"
             
         rank += 1
     
-    msg += "💡 _Tip: `/invest` in active groups to earn more!_"
-    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+    msg += "\n💡 <i>Tip: <code>/invest</code> in active groups to earn more!</i>"
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 # --- 3. MARKET INFO (Current Group) ---
 async def market_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if chat.type == "private": 
-        await update.message.reply_text("❌ Ye command sirf Groups me chalti hai!")
+        await update.message.reply_text("❌ This command works only in Groups!")
         return
         
     price = get_group_price(chat.id)
@@ -69,15 +74,21 @@ async def market_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_val = list(total_invested_cursor)
     market_cap = total_val[0]['total'] if total_val else 0
     
-    await update.message.reply_text(
-        f"📊 **MARKET STATUS: {chat.title}**\n\n"
-        f"💰 **Share Price:** ₹{price}\n"
-        f"🏦 **Market Cap:** ₹{market_cap}\n\n"
-        f"🛒 Buy: `/invest <amount>`\n"
-        f"💵 Sell: `/sell`\n"
-        f"🏆 Top Investors: `/topinvest`", 
-        parse_mode=ParseMode.MARKDOWN
-    )
+    msg = f"""
+<blockquote><b>📊 {to_fancy("MARKET STATUS")}: {html.escape(chat.title)}</b></blockquote>
+
+<blockquote>
+<b>💰 sʜᴀʀᴇ ᴘʀɪᴄᴇ :</b> ₹{price}
+<b>🏦 ᴍᴀʀᴋᴇᴛ ᴄᴀᴘ :</b> ₹{market_cap}
+</blockquote>
+
+<blockquote>
+<b>🛒 ʙᴜʏ :</b> <code>/invest [amount]</code>
+<b>💵 sᴇʟʟ :</b> <code>/sell</code>
+<b>🏆 ᴛᴏᴘ ɪɴᴠᴇsᴛᴏʀs :</b> <code>/topinvest</code>
+</blockquote>
+"""
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 # --- 4. INVEST (Buy Shares) ---
 async def invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -85,7 +96,7 @@ async def invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     
     if chat.type == "private": 
-        await update.message.reply_text("❌ Shares sirf Groups me khareed sakte ho!")
+        await update.message.reply_text("❌ You can only buy shares in Groups!")
         return
     
     # Check Registration
@@ -96,21 +107,21 @@ async def invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = int(context.args[0])
         if amount <= 0: raise ValueError
     except: 
-        await update.message.reply_text("⚠️ **Usage:** `/invest 100` (Amount likho)")
+        await update.message.reply_text("⚠️ <b>Usage:</b> <code>/invest 100</code>", parse_mode=ParseMode.HTML)
         return
         
     u_data = get_user(user.id)
     if u_data["balance"] < amount: 
-        await update.message.reply_text(f"❌ **Garib!** Tere paas sirf ₹{u_data['balance']} hain.")
+        await update.message.reply_text(f"❌ <b>Insufficient Funds!</b> You only have ₹{u_data['balance']}.", parse_mode=ParseMode.HTML)
         return
     
     current_price = get_group_price(chat.id)
-    shares = round(amount / current_price, 4) # 4 decimal places tak shares
+    shares = round(amount / current_price, 4) 
     
-    # 1. Paisa kaato
+    # 1. Deduct Money
     update_balance(user.id, -amount)
     
-    # 2. Investment Save karo
+    # 2. Save Investment
     investments_col.insert_one({
         "user_id": user.id, 
         "group_id": chat.id, 
@@ -119,13 +130,16 @@ async def invest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "buy_price": current_price
     })
     
-    await update.message.reply_text(
-        f"✅ **INVESTMENT SUCCESSFUL!**\n\n"
-        f"📉 **Amount:** ₹{amount}\n"
-        f"📄 **Shares:** {shares}\n"
-        f"📈 **Price:** ₹{current_price}/share",
-        parse_mode=ParseMode.MARKDOWN
-    )
+    msg = f"""
+<blockquote><b>✅ {to_fancy("INVESTMENT SUCCESSFUL")}</b></blockquote>
+
+<blockquote>
+<b>📉 ᴀᴍᴏᴜɴᴛ :</b> ₹{amount}
+<b>📄 sʜᴀʀᴇs :</b> {shares}
+<b>📈 ᴘʀɪᴄᴇ :</b> ₹{current_price}/share
+</blockquote>
+"""
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 # --- 5. SELL SHARES (Book Profit) ---
 async def sell_shares(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,7 +151,7 @@ async def sell_shares(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Find all shares of this user in this group
     invs = list(investments_col.find({"user_id": user.id, "group_id": chat.id}))
     if not invs: 
-        await update.message.reply_text("❌ Is group me tumhare koi shares nahi hain!")
+        await update.message.reply_text("❌ You don't have any shares in this group!")
         return
     
     # Calculate Total
@@ -151,19 +165,22 @@ async def sell_shares(update: Update, context: ContextTypes.DEFAULT_TYPE):
     investments_col.delete_many({"user_id": user.id, "group_id": chat.id})
     update_balance(user.id, payout)
     
-    await update.message.reply_text(
-        f"💵 **SHARES SOLD!**\n\n"
-        f"📄 Sold: {round(total_shares, 2)} shares\n"
-        f"💰 **Received:** ₹{payout}\n"
-        f"📈 Rate: ₹{current_price}", 
-        parse_mode=ParseMode.MARKDOWN
-    )
+    msg = f"""
+<blockquote><b>💵 {to_fancy("SHARES SOLD")}</b></blockquote>
 
-# --- 6. 🔥 NEW: TOP INVESTORS (Group Specific) ---
+<blockquote>
+<b>📄 sᴏʟᴅ :</b> {round(total_shares, 2)} shares
+<b>💰 ʀᴇᴄᴇɪᴠᴇᴅ :</b> ₹{payout}
+<b>📈 ʀᴀᴛᴇ :</b> ₹{current_price}
+</blockquote>
+"""
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+# --- 6. TOP INVESTORS (Group Specific) ---
 async def top_investors(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if chat.type == "private": 
-        await update.message.reply_text("❌ Group me use karo!")
+        await update.message.reply_text("❌ Use this in a Group!")
         return
 
     # Aggregation to sum shares per user in this group
@@ -177,10 +194,10 @@ async def top_investors(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = list(investments_col.aggregate(pipeline))
     
     if not results:
-        await update.message.reply_text("❌ Is group me abhi koi investor nahi hai.")
+        await update.message.reply_text("❌ No investors in this group yet.")
         return
 
-    msg = f"🏆 **TOP INVESTORS: {chat.title}** 🏆\n\n"
+    msg = f"<blockquote><b>🏆 {to_fancy('TOP INVESTORS')}: {html.escape(chat.title)}</b></blockquote>\n\n"
     price = get_group_price(chat.id)
     
     for idx, item in enumerate(results, 1):
@@ -188,10 +205,10 @@ async def top_investors(update: Update, context: ContextTypes.DEFAULT_TYPE):
         shares = item["total_shares"]
         value = int(shares * price)
         
-        # User ka naam nikalo
+        # User Name
         u_data = get_user(uid)
-        name = u_data["name"] if u_data else "Unknown"
+        name = html.escape(u_data["name"]) if u_data else "Unknown"
         
-        msg += f"{idx}. **{name}**\n   📄 Shares: {round(shares, 1)} | 💰 Val: ₹{value}\n"
+        msg += f"<blockquote><b>{idx}. {name}</b>\n   📄 Shares: {round(shares, 1)} | 💰 Val: ₹{value}</blockquote>\n"
         
-    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
