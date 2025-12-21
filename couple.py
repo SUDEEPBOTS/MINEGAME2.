@@ -2,6 +2,7 @@ import os
 import random
 import io
 import asyncio
+import html  # 🔥 Added Missing Import
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
@@ -20,18 +21,18 @@ def to_fancy(text):
     mapping = {'A': 'Λ', 'E': 'Є', 'S': 'δ', 'O': 'σ', 'T': 'ᴛ', 'N': 'ɴ', 'M': 'ᴍ', 'U': 'ᴜ', 'R': 'ʀ', 'D': 'ᴅ', 'C': 'ᴄ', 'P': 'ᴘ', 'G': 'ɢ', 'B': 'ʙ', 'L': 'ʟ', 'W': 'ᴡ', 'K': 'ᴋ', 'J': 'ᴊ', 'Y': 'ʏ', 'I': 'ɪ', 'H': 'ʜ'}
     return "".join(mapping.get(c.upper(), c) for c in text)
 
-# --- SYNC IMAGE PROCESSING (To avoid blocking loop) ---
+# --- SYNC IMAGE PROCESSING ---
 def process_image_sync(bg_path, pfp1_bytes, pfp2_bytes, name1, name2):
     print("🎨 [Step 3] Processing Image in CPU...")
     
-    # 1. Load or Create Background
+    # 1. Load Background
     try:
         bg = Image.open(bg_path).convert("RGBA")
     except:
         print("⚠️ ccpic.png not found, creating red background.")
-        bg = Image.new('RGBA', (1200, 600), (200, 0, 0, 255)) # Red BG fallback
+        bg = Image.new('RGBA', (1200, 600), (200, 0, 0, 255)) 
 
-    # Helper to process single PFP
+    # Helper for PFP
     def process_pfp(img_bytes, label_name):
         try:
             if img_bytes:
@@ -39,10 +40,10 @@ def process_image_sync(bg_path, pfp1_bytes, pfp2_bytes, name1, name2):
             else:
                 raise Exception("No bytes")
         except:
-            # Fallback PFP (Colored Circle with Letter)
+            # Fallback PFP
             img = Image.new('RGBA', (CIRCLE_SIZE, CIRCLE_SIZE), (random.randint(50, 200), 100, 100))
             d = ImageDraw.Draw(img)
-            d.text((150, 100), label_name[0], fill="white", font=ImageFont.load_default())
+            d.text((150, 100), label_name[0] if label_name else "?", fill="white", font=ImageFont.load_default())
 
         # Resize & Mask
         img = ImageOps.fit(img, (CIRCLE_SIZE, CIRCLE_SIZE), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
@@ -69,12 +70,13 @@ def process_image_sync(bg_path, pfp1_bytes, pfp2_bytes, name1, name2):
     except:
         font = ImageFont.load_default()
 
-    # Draw Names
+    # Draw Name 1
     name1 = name1[:15]
     bbox1 = draw.textbbox((0, 0), name1, font=font)
     w1 = bbox1[2] - bbox1[0]
     draw.text((POS_1[0] + (CIRCLE_SIZE - w1) // 2, POS_1[1] + CIRCLE_SIZE + 40), name1, font=font, fill="white")
 
+    # Draw Name 2
     name2 = name2[:15]
     bbox2 = draw.textbbox((0, 0), name2, font=font)
     w2 = bbox2[2] - bbox2[0]
@@ -89,7 +91,6 @@ def process_image_sync(bg_path, pfp1_bytes, pfp2_bytes, name1, name2):
 
 # --- ASYNC WRAPPER ---
 async def make_couple_img(user1, user2, context):
-    # Fetch PFP Bytes asynchronously
     async def get_bytes(u_id):
         try:
             photos = await context.bot.get_profile_photos(u_id, limit=1)
@@ -101,13 +102,11 @@ async def make_couple_img(user1, user2, context):
         return None
 
     print("📥 [Step 2] Downloading PFPs...")
-    # Download both at same time (Faster)
     pfp1_bytes, pfp2_bytes = await asyncio.gather(
         get_bytes(user1['id']),
         get_bytes(user2['id'])
     )
 
-    # Run Image Processing in a separate thread (Non-blocking)
     loop = asyncio.get_running_loop()
     final_img = await loop.run_in_executor(
         None, 
