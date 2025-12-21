@@ -3,23 +3,16 @@ import os
 from database import get_all_voice_keys, remove_voice_key, get_custom_voice
 
 def generate_voice(text):
-    """
-    Auto-Switching Logic with Custom Voice Support:
-    1. Database se current Voice ID aur saari API Keys uthayega.
-    2. Ek-ek karke keys try karega.
-    3. Agar key dead (401/402) mili to use DB se uda dega aur agli try karega.
-    """
-    
-    # 1. DB se settings aur keys lo
     keys = get_all_voice_keys()
-    voice_id = get_custom_voice() # Admin panel se set ki gayi ID
+    voice_id = get_custom_voice()
     
-    # Agar DB me keys nahi hain to return None
+    # Debugging Print: Check karo keys aayi ya nahi
+    print(f"🔍 Debug: Database se {len(keys)} keys mili. Voice ID: {voice_id}")
+
     if not keys:
         print("❌ No Voice Keys Found in DB!")
         return None
 
-    # ElevenLabs API URL
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     CHUNK_SIZE = 1024
 
@@ -30,37 +23,33 @@ def generate_voice(text):
             "xi-api-key": api_key
         }
 
-        # Voice Settings: Multilingual v2 Hindi ke liye best hai
         data = {
             "text": text,
             "model_id": "eleven_multilingual_v2",
             "voice_settings": {
-                "stability": 0.45,       # Thoda emotions ke liye
-                "similarity_boost": 0.8, # Asli awaaz jaisa lagne ke liye
-                "style": 0.0,            # Normal rakha hai
+                "stability": 0.45,
+                "similarity_boost": 0.8,
+                "style": 0.0,
                 "use_speaker_boost": True
             }
         }
 
         try:
-            print(f"🎤 Trying Voice Key: {api_key[:5]}... | Voice: {voice_id}")
+            print(f"🎤 Trying Key: {api_key[:5]}... on ID: {voice_id}")
             response = requests.post(url, json=data, headers=headers)
             
-            # ✅ SUCCESS: Voice Note ban gaya
             if response.status_code == 200:
-                # Unique filename taki files takraye nahi
                 file_path = f"mimi_voice_{os.urandom(3).hex()}.mp3"
                 with open(file_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-                        if chunk:
-                            f.write(chunk)
+                        if chunk: f.write(chunk)
                 return file_path
             
-            # ⚠️ QUOTA EXHAUSTED / DEAD KEY (Error 401/402)
+            # 🔥 CHANGE: Abhi delete mat karo, bas print karo
             elif response.status_code in [401, 402]:
-                print(f"🚫 Key Dead/Quota Full: {api_key[:5]}... Removing from DB.")
-                remove_voice_key(api_key) # Database se dead key delete
-                continue # Agli key par jao
+                print(f"🚫 Key Dead/Quota Full: {api_key[:5]}... (Not Deleting for Debug)")
+                # remove_voice_key(api_key)  <-- Is line ko comment kar diya
+                continue
             
             else:
                 print(f"⚠️ TTS Error ({response.status_code}): {response.text}")
@@ -70,5 +59,4 @@ def generate_voice(text):
             print(f"❌ TTS Exception: {e}")
             continue
             
-    print("❌ All available voice keys failed.")
     return None
