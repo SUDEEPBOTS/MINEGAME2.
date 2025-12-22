@@ -7,7 +7,7 @@ pyrogram==2.0.106
 tgcrypto>=1.2.5
 yt-dlp>=2024.7
 Pillow>=10.3
-google-genai>=0.3.0
+google.generativeai
 psutil>=5.9
 pytz>=2024.1
 edge-tts>=6.1
