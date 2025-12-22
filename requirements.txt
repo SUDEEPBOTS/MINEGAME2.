@@ -7,7 +7,7 @@ psutil==6.1.0
 pytz==2024.2
 edge-tts==6.1.12
 Pillow==11.0.0
-yt-dlp==2025.01.01
+yt-dlp==2024.7.23.232906.dev0
 tgcrypto==1.2.5
 
 # MTProto + voice
