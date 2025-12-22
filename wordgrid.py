@@ -153,26 +153,22 @@ def draw_grid_image(grid, found_words=None, word_positions=None):
 # --- 3. AUTO-END GAME FUNCTION ---
 async def auto_end_game(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.chat_id
-    print(f"AUTO-END: Checking game for chat {chat_id}")
     
     if chat_id in active_games:
         game = active_games[chat_id]
-        print(f"AUTO-END: Ending game in chat {chat_id}, targets: {game['targets']}")
         
         # Unpin the message
         if game.get('message_pinned'):
             try:
                 await context.bot.unpin_chat_message(chat_id=chat_id, message_id=game.get('msg_id'))
-                print(f"AUTO-END: Unpinned message {game.get('msg_id')}")
-            except Exception as e:
-                print(f"AUTO-END: Failed to unpin: {e}")
+            except:
+                pass
         
         # Delete game message
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=game.get('msg_id'))
-            print(f"AUTO-END: Deleted game message {game.get('msg_id')}")
-        except Exception as e:
-            print(f"AUTO-END: Failed to delete game message: {e}")
+        except:
+            pass
         
         # Send timeout notification
         try:
@@ -186,50 +182,29 @@ Game ended due to inactivity (5 minutes)
 <b>Found:</b> {len(game['found'])}/{len(game['targets'])}""",
                 parse_mode=ParseMode.HTML
             )
-            print(f"AUTO-END: Sent timeout message")
             # Delete timeout message after 10 seconds
             await asyncio.sleep(10)
             await timeout_msg.delete()
-        except Exception as e:
-            print(f"AUTO-END: Failed to send timeout message: {e}")
+        except:
+            pass
         
         # Clean up
         if chat_id in active_games:
             del active_games[chat_id]
-            print(f"AUTO-END: Removed game from active_games")
         if chat_id in game_timeouts:
             del game_timeouts[chat_id]
-            print(f"AUTO-END: Removed timeout job")
-    else:
-        print(f"AUTO-END: No active game found for chat {chat_id}")
 
 # --- 4. START COMMAND ---
 async def start_wordgrid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
-    
-    print(f"START COMMAND: /wordgrid from user {user_id} in chat {chat_id}")
-    
-    # Delete the command message
-    try:
-        await update.message.delete()
-        print(f"START COMMAND: Deleted command message")
-    except Exception as e:
-        print(f"START COMMAND: Could not delete command message: {e}")
     
     # Check if game already running in this chat
     if chat_id in active_games:
-        warning_msg = await update.message.reply_text(
+        await update.message.reply_text(
             f"⚠️ <b>A Word Grid game is already running in this chat!</b>\n"
             f"Complete it or use the 'Give Up' button first.",
             parse_mode=ParseMode.HTML
         )
-        # Delete warning after 5 seconds
-        await asyncio.sleep(5)
-        try:
-            await warning_msg.delete()
-        except:
-            pass
         return
     
     # Generate new game
@@ -245,8 +220,7 @@ async def start_wordgrid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'word_positions': word_positions,
         'message_pinned': False,
         'start_time': time.time(),
-        'created_by': update.effective_user.id,
-        'last_activity': time.time()
+        'created_by': update.effective_user.id
     }
     
     word_list_text = "\n".join([f"▫️ <code>{hints[w]}</code>" for w in targets])
@@ -275,22 +249,11 @@ async def start_wordgrid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await msg.pin(disable_notification=True)
         active_games[chat_id]['message_pinned'] = True
-        print(f"START COMMAND: Pinned game message {msg.message_id}")
     except Exception as e:
-        print(f"START COMMAND: Could not pin message: {e}")
+        print(f"Could not pin message: {e}")
     
-    # Schedule auto-end job - FIXED
+    # Schedule auto-end job
     if context.job_queue:
-        # Remove any existing timeout for this chat
-        if chat_id in game_timeouts:
-            try:
-                old_job = game_timeouts[chat_id]
-                old_job.schedule_removal()
-                print(f"START COMMAND: Removed old timeout job")
-            except:
-                pass
-        
-        # Schedule new timeout
         job = context.job_queue.run_once(
             auto_end_game,
             when=GAME_TIMEOUT,
@@ -298,10 +261,6 @@ async def start_wordgrid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             name=f"wordgrid_timeout_{chat_id}"
         )
         game_timeouts[chat_id] = job
-        print(f"START COMMAND: Scheduled auto-end job for {GAME_TIMEOUT} seconds from now")
-        print(f"START COMMAND: Job name: wordgrid_timeout_{chat_id}")
-    else:
-        print(f"START COMMAND: No job_queue available!")
 
 # --- 5. HANDLE GUESS ---
 async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -318,20 +277,27 @@ async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game = active_games[chat_id]
     text = update.message.text.upper().strip()
     
-    # Update last activity time
-    game['last_activity'] = time.time()
-    
     # Debug print
-    print(f"GUESS: User {user_id} guessed: '{text}' in chat {chat_id}")
-    print(f"GUESS: Game targets: {game['targets']}")
+    print(f"DEBUG: User {user_id} guessed: '{text}' in chat {chat_id}")
+    print(f"DEBUG: Game targets: {game['targets']}")
     
     # Check if word is valid
     if text not in game['targets']:
         # Not a valid word - send reaction
         try:
+            # First try with emoji directly
             await update.message.react("❌")
         except Exception as e:
-            print(f"GUESS: Error sending ❌ reaction: {e}")
+            print(f"Error sending ❌ reaction: {e}")
+            try:
+                # Alternative method
+                await context.bot.send_reaction(
+                    chat_id=chat_id,
+                    message_id=update.message.message_id,
+                    reaction="❌"
+                )
+            except Exception as e2:
+                print(f"Alternative reaction also failed: {e2}")
         return
     
     if text in game['found']:
@@ -339,24 +305,25 @@ async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await update.message.react("⚠️")
         except Exception as e:
-            print(f"GUESS: Error sending ⚠️ reaction: {e}")
+            print(f"Error sending ⚠️ reaction: {e}")
+            try:
+                await context.bot.send_reaction(
+                    chat_id=chat_id,
+                    message_id=update.message.message_id,
+                    reaction="⚠️"
+                )
+            except:
+                pass
         return
     
     # Valid new word found!
     game['found'].append(text)
-    print(f"GUESS: Found new word: {text}")
     
-    # Reset timeout when word is found - FIXED
+    # Reset timeout when word is found
     if chat_id in game_timeouts and context.job_queue:
-        print(f"GUESS: Resetting timeout for chat {chat_id}")
         # Remove old timeout
-        try:
-            old_job = game_timeouts[chat_id]
-            old_job.schedule_removal()
-            print(f"GUESS: Removed old timeout job")
-        except Exception as e:
-            print(f"GUESS: Error removing old job: {e}")
-        
+        old_job = game_timeouts[chat_id]
+        old_job.schedule_removal()
         # Schedule new timeout
         job = context.job_queue.run_once(
             auto_end_game,
@@ -365,9 +332,6 @@ async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             name=f"wordgrid_timeout_{chat_id}"
         )
         game_timeouts[chat_id] = job
-        print(f"GUESS: Scheduled new timeout for {GAME_TIMEOUT} seconds")
-    else:
-        print(f"GUESS: No job_queue or timeout found for chat {chat_id}")
     
     # Update image
     photo = draw_grid_image(game['grid'], game['found'], game['word_positions'])
@@ -409,46 +373,66 @@ async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏳️ Give Up", callback_data="giveup_wordgrid")]])
         )
         
-        # ADD REACTION TO USER'S MESSAGE
+        # ADD REACTION TO USER'S MESSAGE - FIXED
         try:
+            # Method 1: Direct reaction
             await update.message.react("👍")
-            print(f"GUESS: Sent 👍 reaction for word: {text}")
+            print(f"DEBUG: Sent 👍 reaction for correct word")
         except Exception as e:
-            print(f"GUESS: Error sending 👍 reaction: {e}")
+            print(f"Method 1 reaction error: {e}")
+            try:
+                # Method 2: Bot send_reaction
+                await context.bot.send_reaction(
+                    chat_id=chat_id,
+                    message_id=update.message.message_id,
+                    reaction=telegram.ReactionTypeEmoji(emoji="👍")
+                )
+            except Exception as e2:
+                print(f"Method 2 reaction error: {e2}")
+                try:
+                    # Method 3: Try with string
+                    await context.bot.send_reaction(
+                        chat_id=chat_id,
+                        message_id=update.message.message_id,
+                        reaction="👍"
+                    )
+                except Exception as e3:
+                    print(f"Method 3 reaction error: {e3}")
+                    # Method 4: Send temporary text message
+                    try:
+                        temp_msg = await update.message.reply_text(f"✅ Correct! Found: {text}")
+                        await asyncio.sleep(2)
+                        await temp_msg.delete()
+                    except:
+                        pass
         
-        print(f"GUESS: Successfully updated game for word: {text}")
+        print(f"DEBUG: Successfully found word: {text}")
         
     except Exception as e:
-        print(f"GUESS: Error updating game: {str(e)}")
+        print(f"DEBUG: Error updating game: {str(e)}")
     
     # Check if game is complete
     if len(game['found']) == len(game['targets']):
-        print(f"GUESS: Game completed! All words found")
+        print(f"DEBUG: Game completed!")
         
         # Cancel timeout job
         if chat_id in game_timeouts:
-            try:
-                job = game_timeouts[chat_id]
-                job.schedule_removal()
-                del game_timeouts[chat_id]
-                print(f"GUESS: Cancelled timeout job")
-            except Exception as e:
-                print(f"GUESS: Error cancelling timeout: {e}")
+            job = game_timeouts[chat_id]
+            job.schedule_removal()
+            del game_timeouts[chat_id]
         
         # Unpin message
         if game.get('message_pinned'):
             try:
                 await context.bot.unpin_chat_message(chat_id=chat_id, message_id=game['msg_id'])
-                print(f"GUESS: Unpinned message")
-            except Exception as e:
-                print(f"GUESS: Error unpinning: {e}")
+            except:
+                pass
         
         # Delete game message
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=game['msg_id'])
-            print(f"GUESS: Deleted game message")
-        except Exception as e:
-            print(f"GUESS: Error deleting game message: {e}")
+        except:
+            pass
         
         # Send completion message
         final_caption = f"""<blockquote><b>🏆 {to_fancy("GAME COMPLETE")}!</b></blockquote>
@@ -462,22 +446,28 @@ async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Send completion message
             completion_msg = await update.message.reply_text(final_caption, parse_mode=ParseMode.HTML)
             
-            # Add celebration reaction
+            # Add celebration reaction to user's message
             try:
                 await update.message.react("🎉")
             except:
-                pass
+                try:
+                    await context.bot.send_reaction(
+                        chat_id=chat_id,
+                        message_id=update.message.message_id,
+                        reaction="🎉"
+                    )
+                except:
+                    pass
             
             # Delete completion message after 15 seconds
             await asyncio.sleep(15)
             await completion_msg.delete()
             
         except Exception as e:
-            print(f"GUESS: Error sending completion: {e}")
+            print(f"Error sending completion message: {e}")
         
         # Clean up
         del active_games[chat_id]
-        print(f"GUESS: Game cleaned up from active_games")
 
 # --- 6. GIVE UP ---
 async def give_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -485,36 +475,28 @@ async def give_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     chat_id = query.message.chat_id
-    print(f"GIVE UP: User gave up in chat {chat_id}")
-    
     if chat_id in active_games:
         game = active_games[chat_id]
         targets = game['targets']
         
         # Cancel timeout job
         if chat_id in game_timeouts:
-            try:
-                job = game_timeouts[chat_id]
-                job.schedule_removal()
-                del game_timeouts[chat_id]
-                print(f"GIVE UP: Cancelled timeout job")
-            except Exception as e:
-                print(f"GIVE UP: Error cancelling timeout: {e}")
+            job = game_timeouts[chat_id]
+            job.schedule_removal()
+            del game_timeouts[chat_id]
         
         # Unpin message
         if game.get('message_pinned'):
             try:
                 await context.bot.unpin_chat_message(chat_id=chat_id, message_id=game['msg_id'])
-                print(f"GIVE UP: Unpinned message")
-            except Exception as e:
-                print(f"GIVE UP: Error unpinning: {e}")
+            except:
+                pass
         
         # Delete game message
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=game['msg_id'])
-            print(f"GIVE UP: Deleted game message")
-        except Exception as e:
-            print(f"GIVE UP: Error deleting game message: {e}")
+        except:
+            pass
         
         # Send give up message
         giveup_msg = await context.bot.send_message(
@@ -536,7 +518,6 @@ async def give_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Remove game
         del active_games[chat_id]
-        print(f"GIVE UP: Game removed from active_games")
     else:
         await query.answer("No active game.", show_alert=True)
 
@@ -548,7 +529,7 @@ async def grid_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "giveup_wordgrid":
         await give_up(update, context)
 
-# --- 8. CLEANUP FUNCTION ---
+# --- 8. CLEANUP FUNCTION (Optional) ---
 def cleanup_old_games():
     """Clean up games older than timeout + buffer"""
     current_time = time.time()
@@ -557,7 +538,6 @@ def cleanup_old_games():
     for chat_id, game in active_games.items():
         if current_time - game['start_time'] > GAME_TIMEOUT + 60:  # 6 minutes
             chats_to_remove.append(chat_id)
-            print(f"CLEANUP: Removing stale game from chat {chat_id}")
     
     for chat_id in chats_to_remove:
         if chat_id in active_games:
