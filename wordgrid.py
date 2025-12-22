@@ -172,21 +172,26 @@ async def auto_end_game(context: ContextTypes.DEFAULT_TYPE):
         
         # Send timeout notification
         try:
+            # FIX: Pre-calculate the fancy text
+            fancy_timeup = to_fancy("TIME'S UP")
+            targets_str = ', '.join(game['targets'])
+            found_count = f"{len(game['found'])}/{len(game['targets'])}"
+            
             timeout_msg = await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"""⏰ <b>{to_fancy("TIME'S UP")}!</b>
+                text=f"""⏰ <b>{fancy_timeup}!</b>
 
 Game ended due to inactivity (5 minutes)
 
-<b>Words were:</b> {', '.join(game['targets'])}
-<b>Found:</b> {len(game['found'])}/{len(game['targets'])}""",
+<b>Words were:</b> {targets_str}
+<b>Found:</b> {found_count}""",
                 parse_mode=ParseMode.HTML
             )
             # Delete timeout message after 10 seconds
             await asyncio.sleep(10)
             await timeout_msg.delete()
-        except:
-            pass
+        except Exception as e:
+            print(f"Error sending timeout message: {e}")
         
         # Clean up
         if chat_id in active_games:
@@ -225,12 +230,16 @@ async def start_wordgrid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     word_list_text = "\n".join([f"▫️ <code>{hints[w]}</code>" for w in targets])
     
+    # FIX: Pre-calculate the fancy text
+    fancy_challenge = to_fancy("WORD GRID CHALLENGE")
+    found_count = f"0/{len(targets)}"
+    
     # FIXED HTML - NO EXTRA SPACES, CORRECT TAGS
-    caption = f"""<blockquote><b>🧩 {to_fancy("WORD GRID CHALLENGE")}</b></blockquote>
+    caption = f"""<blockquote><b>🧩 {fancy_challenge}</b></blockquote>
 <blockquote>{word_list_text}</blockquote>
 <blockquote><b>👇 Type the FULL word to solve!</b>
 <b>👨‍💻 Dev:</b> Digan
-<b>🎯 Found: 0/{len(targets)} words</b>
+<b>🎯 Found: {found_count} words</b>
 <b>⏰ Auto-ends in 5 minutes</b></blockquote>"""
     
     kb = [[InlineKeyboardButton("🏳️ Give Up", callback_data="giveup_wordgrid")]]
@@ -347,12 +356,17 @@ async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     progress = len(game['found'])
     total = len(game['targets'])
     
+    # FIX: Pre-calculate the fancy text
+    fancy_challenge = to_fancy("WORD GRID CHALLENGE")
+    word_list_display = "\n".join(new_list)
+    found_display = f"{progress}/{total}"
+    
     # FIXED HTML FORMATTING
-    caption = f"""<blockquote><b>🧩 {to_fancy("WORD GRID CHALLENGE")}</b></blockquote>
-<blockquote>{"\n".join(new_list)}</blockquote>
+    caption = f"""<blockquote><b>🧩 {fancy_challenge}</b></blockquote>
+<blockquote>{word_list_display}</blockquote>
 <blockquote><b>👇 Type the FULL word to solve!</b>
 <b>👨‍💻 Dev:</b> Digan
-<b>🎯 Found: {progress}/{total} words</b>
+<b>🎯 Found: {found_display} words</b>
 <b>⏰ Auto-ends in 5 minutes</b></blockquote>"""
     
     try:
@@ -434,12 +448,19 @@ async def handle_word_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
         
+        # FIX: Pre-calculate the fancy text and other variables
+        fancy_complete = to_fancy("GAME COMPLETE")
+        total = len(game['targets'])
+        username = update.effective_user.username if update.effective_user.username else update.effective_user.first_name
+        time_taken = f"{(time.time() - game['start_time']):.1f}"
+        targets_str = ', '.join(game['targets'])
+        
         # Send completion message
-        final_caption = f"""<blockquote><b>🏆 {to_fancy("GAME COMPLETE")}!</b></blockquote>
+        final_caption = f"""<blockquote><b>🏆 {fancy_complete}!</b></blockquote>
 <blockquote>✅ All {total} words found!
-🎉 Congratulations @{update.effective_user.username if update.effective_user.username else update.effective_user.first_name}!
-⏱️ Time: {(time.time() - game['start_time']):.1f}s</blockquote>
-<blockquote><b>Words:</b> {', '.join(game['targets'])}
+🎉 Congratulations @{username}!
+⏱️ Time: {time_taken}s</blockquote>
+<blockquote><b>Words:</b> {targets_str}
 <b>👨‍💻 Dev:</b> Digan</blockquote>"""
         
         try:
@@ -498,14 +519,20 @@ async def give_up(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
         
+        # FIX: Pre-calculate the fancy text and other variables
+        fancy_gameover = to_fancy("GAME OVER")
+        time_played = f"{(time.time() - game['start_time']):.1f}"
+        targets_str = ', '.join(targets)
+        found_count = f"{len(game['found'])}/{len(targets)}"
+        
         # Send give up message
         giveup_msg = await context.bot.send_message(
             chat_id=chat_id,
-            text=f"""<blockquote><b>❌ {to_fancy("GAME OVER")}</b></blockquote>
+            text=f"""<blockquote><b>❌ {fancy_gameover}</b></blockquote>
 <blockquote>🏳️ Game ended by user
-⏱️ Time played: {(time.time() - game['start_time']):.1f}s</blockquote>
-<blockquote><b>Words were:</b> {', '.join(targets)}
-<b>Found:</b> {len(game['found'])}/{len(targets)}</blockquote>""",
+⏱️ Time played: {time_played}s</blockquote>
+<blockquote><b>Words were:</b> {targets_str}
+<b>Found:</b> {found_count}</blockquote>""",
             parse_mode=ParseMode.HTML
         )
         
