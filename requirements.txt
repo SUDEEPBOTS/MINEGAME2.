@@ -1,14 +1,9 @@
-python-telegram-bot>=21.0
-pymongo>=4.6
-flask>=3.0
-# CRITICAL: Pin these exact versions for compatibility
-py-tgcalls==3.0.0.dev24  # This is a stable development version with AudioQuality
-pyrogram==2.0.106
-tgcrypto>=1.2.5
-yt-dlp>=2024.7
-Pillow>=10.3
-google.generativeai
-psutil>=5.9
-pytz>=2024.1
-edge-tts>=6.1
-dnspython>=2.4
+python-telegram-bot
+pymongo
+dnspython
+flask
+google-generativeai
+psutil
+pytz
+edge-tts
+Pillow
